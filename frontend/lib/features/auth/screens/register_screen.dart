@@ -225,7 +225,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
       );
       
       if (mounted) {
-        Navigator.pushReplacementNamed(context, '/home');
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const _RegisterSuccess()),
+        );
       }
     } catch (e) {
       setState(() {
@@ -236,5 +239,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
         _isLoading = false;
       });
     }
+  }
+}
+
+class _RegisterSuccess extends StatelessWidget {
+  const _RegisterSuccess();
+
+  @override
+  Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    });
+    return const Scaffold(
+      body: Center(child: CircularProgressIndicator()),
+    );
   }
 }

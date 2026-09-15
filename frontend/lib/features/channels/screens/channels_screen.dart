@@ -6,7 +6,9 @@ import '../../location/services/location_service.dart';
 import '../../location/models/location_model.dart';
 
 class ChannelsScreen extends StatefulWidget {
-  const ChannelsScreen({super.key});
+  final void Function(String channelId, String channelName)? onChannelSelected;
+
+  const ChannelsScreen({super.key, this.onChannelSelected});
 
   @override
   State<ChannelsScreen> createState() => _ChannelsScreenState();
@@ -249,6 +251,8 @@ class _ChannelsScreenState extends State<ChannelsScreen> {
             backgroundColor: Colors.green,
           ),
         );
+
+        widget.onChannelSelected?.call(channel.id, channel.name);
       }
     } catch (e) {
       if (mounted) {

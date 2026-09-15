@@ -1,43 +1,95 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
-	"github.com/gorilla/websocket"
+	"github.com/radiopx/backend/internal/auth"
+	"github.com/radiopx/backend/internal/channel"
+	"github.com/radiopx/backend/internal/location"
 	"github.com/radiopx/backend/internal/middleware"
+	"github.com/radiopx/backend/internal/user"
+	"github.com/radiopx/backend/internal/voice"
 	ws "github.com/radiopx/backend/pkg/websocket"
 	"github.com/rs/cors"
 )
 
-var (
-	hub      *ws.Hub
-	upgrader = websocket.Upgrader{
-		ReadBufferSize:  1024,
-		WriteBufferSize: 1024,
-		CheckOrigin: func(r *http.Request) bool {
-			return true
-		},
+type authUserServiceAdapter struct {
+	svc *user.UserService
+}
+
+func (a *authUserServiceAdapter) Authenticate(email, password string) (*auth.User, error) {
+	u, err := a.svc.Authenticate(email, password)
+	if err != nil {
+		return nil, err
 	}
-)
+	return &auth.User{
+		ID:       u.ID,
+		Email:    u.Email,
+		Name:     u.Name,
+		Provider: u.Provider,
+	}, nil
+}
+
+func (a *authUserServiceAdapter) GetUser(userID string) (*auth.User, error) {
+	u, err := a.svc.GetUser(userID)
+	if err != nil {
+		return nil, err
+	}
+	return &auth.User{
+		ID:       u.ID,
+		Email:    u.Email,
+		Name:     u.Name,
+		Provider: u.Provider,
+	}, nil
+}
+
+func (a *authUserServiceAdapter) CreateOAuthUser(email, name, provider, providerID string) (*auth.User, error) {
+	u, err := a.svc.CreateOAuthUser(email, name, provider, providerID)
+	if err != nil {
+		return nil, err
+	}
+	return &auth.User{
+		ID:       u.ID,
+		Email:    u.Email,
+		Name:     u.Name,
+		Provider: u.Provider,
+	}, nil
+}
+
+var hub *ws.Hub
 
 func main() {
-	// Initialize WebSocket hub
 	hub = ws.NewHub()
 	go hub.Run()
 
-	// Get port from environment or default to 8080
 	port := os.Getenv("SERVER_PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	// Setup routes
-	setupRoutes()
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		secret = "dev-secret-change-in-production"
+	}
 
-	// Setup CORS
+	userService := user.NewUserService()
+	locationService := location.NewLocationService()
+	channelService := channel.NewChannelService(locationService)
+	authAdapter := &authUserServiceAdapter{svc: userService}
+	authService := auth.NewAuthService(secret, authAdapter)
+	voiceService := voice.NewVoiceService()
+
+	userHandler := user.NewUserHandler(userService)
+	channelHandler := channel.NewChannelHandler(channelService)
+	voiceHandler := voice.NewVoiceHandler(voiceService, hub)
+
+	setupRoutes(userHandler, channelHandler, voiceHandler, authService, userService)
+
 	c := cors.New(cors.Options{
 		AllowedOrigins:   []string{"*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
@@ -45,7 +97,6 @@ func main() {
 		AllowCredentials: true,
 	})
 
-	// Start server
 	handler := c.Handler(http.DefaultServeMux)
 	addr := fmt.Sprintf(":%s", port)
 	log.Printf("RadioPX Backend starting on port %s", port)
@@ -57,91 +108,213 @@ func main() {
 	}
 }
 
-func setupRoutes() {
-	// Health check
+func setupRoutes(
+	userHandler *user.UserHandler,
+	channelHandler *channel.ChannelHandler,
+	voiceHandler *voice.VoiceHandler,
+	authService *auth.AuthService,
+	userService *user.UserService,
+) {
 	http.HandleFunc("/health", healthHandler)
 
-	// Auth routes (public)
-	http.HandleFunc("/api/v1/auth/register", registerHandler)
-	http.HandleFunc("/api/v1/auth/login", loginHandler)
+	http.HandleFunc("/api/v1/auth/register", func(w http.ResponseWriter, r *http.Request) {
+		handleRegister(w, r, userService, authService)
+	})
+	http.HandleFunc("/api/v1/auth/login", func(w http.ResponseWriter, r *http.Request) {
+		handleLogin(w, r, authService)
+	})
+	http.HandleFunc("/api/v1/auth/refresh", func(w http.ResponseWriter, r *http.Request) {
+		handleRefresh(w, r, authService)
+	})
 
-	// Protected routes
-	http.Handle("/api/v1/channels", middleware.AuthMiddleware(http.HandlerFunc(channelsHandler)))
-	http.Handle("/api/v1/channels/join", middleware.AuthMiddleware(http.HandlerFunc(joinChannelHandler)))
-	http.Handle("/api/v1/channels/leave", middleware.AuthMiddleware(http.HandlerFunc(leaveChannelHandler)))
-	http.Handle("/api/v1/location/update", middleware.AuthMiddleware(http.HandlerFunc(updateLocationHandler)))
+	protected := http.NewServeMux()
+	protected.HandleFunc("/api/v1/channels", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			channelHandler.HandleGetUserChannels(w, r)
+		} else if r.Method == http.MethodPost {
+			channelHandler.HandleCreateChannel(w, r)
+		} else {
+			http.Error(w, `{"error":"Method not allowed"}`, http.StatusMethodNotAllowed)
+		}
+	})
+	protected.HandleFunc("/api/v1/channels/join", func(w http.ResponseWriter, r *http.Request) {
+		channelHandler.HandleJoinChannel(w, r)
+	})
+	protected.HandleFunc("/api/v1/channels/leave", func(w http.ResponseWriter, r *http.Request) {
+		channelHandler.HandleLeaveChannel(w, r)
+	})
+	protected.HandleFunc("/api/v1/channels/nearby", func(w http.ResponseWriter, r *http.Request) {
+		channelHandler.HandleGetNearbyChannels(w, r)
+	})
+	protected.HandleFunc("/api/v1/channels/", func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+		if strings.HasSuffix(path, "/users") {
+			channelHandler.HandleGetChannelUsers(w, r)
+		} else {
+			channelHandler.HandleGetChannel(w, r)
+		}
+	})
 
-	// WebSocket endpoint
-	http.HandleFunc("/ws/audio/", websocketHandler)
+	protectedWithAuth := middleware.AuthMiddleware(protected)
+
+	injector := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token := extractToken(r)
+		if token != "" {
+			claims, err := middleware.ValidateToken(token)
+			if err == nil && claims.UserID != "" {
+				r.Header.Set("X-User-ID", claims.UserID)
+			}
+		}
+		protectedWithAuth.ServeHTTP(w, r)
+	})
+
+	http.Handle("/api/v1/channels", injector)
+	http.Handle("/api/v1/channels/join", injector)
+	http.Handle("/api/v1/channels/leave", injector)
+	http.Handle("/api/v1/channels/nearby", injector)
+	http.Handle("/api/v1/channels/", injector)
+
+	http.HandleFunc("/api/v1/location/update", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, `{"message":"Location updated"}`)
+	})
+
+	http.HandleFunc("/ws/audio/", func(w http.ResponseWriter, r *http.Request) {
+		voiceHandler.HandleWebSocket(w, r)
+	})
+}
+
+func extractToken(r *http.Request) string {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		return ""
+	}
+	parts := strings.SplitN(authHeader, " ", 2)
+	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+		return ""
+	}
+	return parts[1]
+}
+
+func handleRegister(w http.ResponseWriter, r *http.Request, userService *user.UserService, authService *auth.AuthService) {
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"Method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Name     string `json:"name"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"Invalid request body"}`, http.StatusBadRequest)
+		return
+	}
+
+	u, err := userService.CreateUser(&user.CreateUserRequest{
+		Email:    req.Email,
+		Password: req.Password,
+		Name:     req.Name,
+	})
+	if err != nil {
+		status := http.StatusConflict
+		if err == user.ErrEmailRequired || err == user.ErrPasswordRequired {
+			status = http.StatusBadRequest
+		}
+		http.Error(w, `{"error":"`+err.Error()+`"}`, status)
+		return
+	}
+
+	tokenPair, err := authService.Login(req.Email, req.Password)
+	if err != nil {
+		http.Error(w, `{"error":"Failed to generate token"}`, http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"token":         tokenPair.AccessToken,
+		"refresh_token": tokenPair.RefreshToken,
+		"user":          u,
+	})
+}
+
+func handleLogin(w http.ResponseWriter, r *http.Request, authService *auth.AuthService) {
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"Method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"Invalid request body"}`, http.StatusBadRequest)
+		return
+	}
+
+	tokenPair, err := authService.Login(req.Email, req.Password)
+	if err != nil {
+		http.Error(w, `{"error":"Invalid credentials"}`, http.StatusUnauthorized)
+		return
+	}
+
+	claims, _ := authService.ValidateToken(tokenPair.AccessToken)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"token":         tokenPair.AccessToken,
+		"refresh_token": tokenPair.RefreshToken,
+		"user": map[string]interface{}{
+			"id":    claims.UserID,
+			"email": claims.Email,
+			"name":  claims.Name,
+		},
+	})
+}
+
+func handleRefresh(w http.ResponseWriter, r *http.Request, authService *auth.AuthService) {
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"Method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"Invalid request body"}`, http.StatusBadRequest)
+		return
+	}
+
+	tokenPair, err := authService.RefreshToken(req.RefreshToken)
+	if err != nil {
+		http.Error(w, `{"error":"Invalid refresh token"}`, http.StatusUnauthorized)
+		return
+	}
+
+	claims, _ := authService.ValidateToken(tokenPair.AccessToken)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"token":         tokenPair.AccessToken,
+		"refresh_token": tokenPair.RefreshToken,
+		"user": map[string]interface{}{
+			"id":    claims.UserID,
+			"email": claims.Email,
+			"name":  claims.Name,
+		},
+	})
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, `{"status":"ok","service":"radiopx-backend","connections":%d}`, hub.GetClientCount())
-}
-
-func registerHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	fmt.Fprintf(w, `{"message":"User registered successfully"}`)
-}
-
-func loginHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, `{"message":"Login successful","token":"placeholder-jwt-token"}`)
-}
-
-func channelsHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, `{"channels":[]}`)
-}
-
-func joinChannelHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, `{"message":"Joined channel successfully"}`)
-}
-
-func leaveChannelHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, `{"message":"Left channel successfully"}`)
-}
-
-func updateLocationHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, `{"message":"Location updated successfully"}`)
-}
-
-func websocketHandler(w http.ResponseWriter, r *http.Request) {
-	// Extract channel ID from URL
-	channelID := r.URL.Query().Get("channel")
-	if channelID == "" {
-		http.Error(w, `{"error":"Channel ID required"}`, http.StatusBadRequest)
-		return
-	}
-
-	// Upgrade connection
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Println("WebSocket upgrade error:", err)
-		return
-	}
-
-	// Create client
-	client := ws.NewClient(hub, conn, "anonymous")
-
-	// Register client
-	hub.RegisterClient(client)
-
-	// Join room
-	hub.JoinRoom(client, channelID)
-
-	// Start goroutines for reading and writing
-	go client.WritePump()
-	go client.ReadPump()
 }

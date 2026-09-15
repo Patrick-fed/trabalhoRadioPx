@@ -176,7 +176,10 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       
       if (mounted) {
-        Navigator.pushReplacementNamed(context, '/home');
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const _LoginSuccess()),
+        );
       }
     } catch (e) {
       setState(() {
@@ -187,5 +190,19 @@ class _LoginScreenState extends State<LoginScreen> {
         _isLoading = false;
       });
     }
+  }
+}
+
+class _LoginSuccess extends StatelessWidget {
+  const _LoginSuccess();
+
+  @override
+  Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    });
+    return const Scaffold(
+      body: Center(child: CircularProgressIndicator()),
+    );
   }
 }
