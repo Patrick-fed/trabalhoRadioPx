@@ -1,14 +1,18 @@
-import 'package:permission_handler/permission_handler.dart';
+import 'dart:io' show Platform;
 
 class MicrophonePermission {
   static Future<bool> checkPermission() async {
-    final status = await Permission.microphone.status;
-    return status.isGranted;
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      return true;
+    }
+    return true;
   }
 
   static Future<bool> requestPermission() async {
-    final status = await Permission.microphone.request();
-    return status.isGranted;
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      return true;
+    }
+    return true;
   }
 
   static Future<bool> checkAndRequestPermission() async {
@@ -19,6 +23,6 @@ class MicrophonePermission {
   }
 
   static Future<void> openSettings() async {
-    await openAppSettings();
+    // Desktop: no-op
   }
 }

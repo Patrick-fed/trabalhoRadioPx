@@ -14,19 +14,12 @@ dependencies:
   dio: ^5.4.0
   web_socket_channel: ^2.4.0
   geolocator: ^10.1.0
-  geocoding: ^2.1.1
-  permission_handler: ^11.1.0
   google_fonts: ^6.1.0
   provider: ^6.1.1
-  flutter_secure_storage: ^9.0.0
-  audio_service: ^0.18.12
   just_audio: ^0.9.36
-  record: ^5.0.4
   path_provider: ^2.1.2
   http: ^1.2.0
   shared_preferences: ^2.2.0
-  permission_handler_android: ^12.0.1
-  permission_handler_apple: ^1.4.0
 
 dev_dependencies:
   flutter_test:

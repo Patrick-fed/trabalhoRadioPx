@@ -3,7 +3,7 @@ import 'dart:collection';
 import 'dart:typed_data';
 
 import '../models/message_buffer_model.dart';
-import '../../core/websocket/websocket_manager.dart';
+import '../../../core/websocket/websocket_manager.dart';
 
 class MessageReplayService {
   final WebSocketManager _webSocketManager;
@@ -87,6 +87,7 @@ class MessageReplayService {
   void _markAsReplayed(String messageId) {
     for (final channelId in _localBuffer.keys) {
       final messages = _localBuffer[channelId];
+      if (messages == null) continue;
       for (int i = 0; i < messages.length; i++) {
         if (messages[i].id == messageId) {
           messages[i] = messages[i].copyWith(isReplayed: true);

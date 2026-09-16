@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:geolocator/geolocator.dart';
 
@@ -12,10 +13,20 @@ class LocationService {
   bool _isTracking = false;
   LocationSettings? _locationSettings;
 
+  // Mock location for desktop (São Paulo)
+  static const double _defaultLatitude = -23.5505;
+  static const double _defaultLongitude = -46.6333;
+
   Stream<LocationModel> get locationStream => _locationController.stream;
   bool get isTracking => _isTracking;
 
+  bool get _isDesktop {
+    return Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+  }
+
   Future<bool> checkPermission() async {
+    if (_isDesktop) return true;
+
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       return false;
@@ -41,6 +52,11 @@ class LocationService {
     int intervalSeconds = 30,
   }) async {
     if (_isTracking) return;
+
+    if (_isDesktop) {
+      _isTracking = true;
+      return;
+    }
 
     final hasPermission = await checkPermission();
     if (!hasPermission) {
@@ -81,6 +97,16 @@ class LocationService {
   }
 
   Future<LocationModel?> getCurrentLocation() async {
+    if (_isDesktop) {
+      return LocationModel(
+        latitude: _defaultLatitude,
+        longitude: _defaultLongitude,
+        accuracy: 0,
+        timestamp: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+    }
+
     final hasPermission = await checkPermission();
     if (!hasPermission) {
       return null;

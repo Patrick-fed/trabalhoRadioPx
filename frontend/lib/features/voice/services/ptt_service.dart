@@ -7,7 +7,6 @@ class PttService {
   final AudioService _audioService;
   bool _isTransmitting = false;
   String? _currentChannelId;
-  String? _userId;
 
   PttService(this._audioService);
 
@@ -22,7 +21,6 @@ class PttService {
     if (_isTransmitting) return;
 
     _currentChannelId = channelId;
-    _userId = userId;
     _isTransmitting = true;
 
     await _audioService.startRecording(
@@ -38,7 +36,6 @@ class PttService {
     await _audioService.stopRecording();
     _isTransmitting = false;
     _currentChannelId = null;
-    _userId = null;
   }
 
   void dispose() {

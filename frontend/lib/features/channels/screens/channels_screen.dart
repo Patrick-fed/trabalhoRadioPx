@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../models/channel_model.dart';
 import '../services/channel_service.dart';
 import '../../location/services/location_service.dart';
-import '../../location/models/location_model.dart';
 
 class ChannelsScreen extends StatefulWidget {
   final void Function(String channelId, String channelName)? onChannelSelected;

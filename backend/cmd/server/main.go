@@ -91,7 +91,7 @@ func main() {
 	setupRoutes(userHandler, channelHandler, voiceHandler, authService, userService)
 
 	c := cors.New(cors.Options{
-		AllowedOrigins:   []string{"*"},
+		AllowedOrigins:   []string{"http://localhost:*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"*"},
 		AllowCredentials: true,
@@ -153,6 +153,32 @@ func setupRoutes(
 		} else {
 			channelHandler.HandleGetChannel(w, r)
 		}
+	})
+
+	protected.HandleFunc("/api/v1/user/profile", func(w http.ResponseWriter, r *http.Request) {
+		userID := r.Header.Get("X-User-ID")
+		if userID == "" {
+			http.Error(w, `{"error":"User ID required"}`, http.StatusBadRequest)
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			userHandler.HandleGetUserProfile(w, r, userID)
+		case http.MethodPut:
+			userHandler.HandleUpdateUserProfile(w, r, userID)
+		case http.MethodDelete:
+			userHandler.HandleDeleteUser(w, r)
+		default:
+			http.Error(w, `{"error":"Method not allowed"}`, http.StatusMethodNotAllowed)
+		}
+	})
+	protected.HandleFunc("/api/v1/user/change-password", func(w http.ResponseWriter, r *http.Request) {
+		userID := r.Header.Get("X-User-ID")
+		if userID == "" {
+			http.Error(w, `{"error":"User ID required"}`, http.StatusBadRequest)
+			return
+		}
+		userHandler.HandleChangePasswordByUserID(w, r, userID)
 	})
 
 	protectedWithAuth := middleware.AuthMiddleware(protected)

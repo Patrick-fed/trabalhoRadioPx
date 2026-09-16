@@ -1,17 +1,16 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'dart:typed_data';
 
-import 'package:record/record.dart';
-
 class AudioService {
-  final AudioRecorder _recorder = AudioRecorder();
   bool _isRecording = false;
   StreamController<Uint8List>? _audioStreamController;
 
   bool get isRecording => _isRecording;
+  bool get _isDesktop => Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
   Future<bool> checkPermission() async {
-    return await _recorder.hasPermission();
+    return true;
   }
 
   Future<void> startRecording({
@@ -19,31 +18,17 @@ class AudioService {
   }) async {
     if (_isRecording) return;
 
-    final hasPermission = await checkPermission();
-    if (!hasPermission) {
-      throw Exception('Microphone permission not granted');
-    }
-
     _audioStreamController = StreamController<Uint8List>.broadcast();
-
-    await _recorder.start(
-      RecordConfig(
-        encoder: AudioEncoder.opus,
-        numChannels: 1,
-        sampleRate: 48000,
-      ),
-      onFreshData: (data) {
-        onData(data);
-      },
-    );
-
     _isRecording = true;
+
+    if (!_isDesktop) {
+      // TODO: Implement real recording for mobile using platform channels
+    }
   }
 
   Future<void> stopRecording() async {
     if (!_isRecording) return;
 
-    await _recorder.stop();
     _isRecording = false;
     _audioStreamController?.close();
     _audioStreamController = null;

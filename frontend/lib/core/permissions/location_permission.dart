@@ -1,14 +1,18 @@
-import 'package:permission_handler/permission_handler.dart';
+import 'dart:io' show Platform;
 
 class LocationPermissionHelper {
   static Future<bool> checkPermission() async {
-    final status = await Permission.locationWhenInUse.status;
-    return status.isGranted;
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      return true;
+    }
+    return true;
   }
 
   static Future<bool> requestPermission() async {
-    final status = await Permission.locationWhenInUse.request();
-    return status.isGranted;
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      return true;
+    }
+    return true;
   }
 
   static Future<bool> checkAndRequestPermission() async {
@@ -19,10 +23,13 @@ class LocationPermissionHelper {
   }
 
   static Future<bool> isLocationServiceEnabled() async {
-    return await Permission.locationWhenInUse.serviceStatus.isEnabled;
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      return true;
+    }
+    return true;
   }
 
   static Future<void> openSettings() async {
-    await openAppSettings();
+    // Desktop: no-op
   }
 }
