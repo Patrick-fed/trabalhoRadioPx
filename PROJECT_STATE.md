@@ -6,9 +6,10 @@ Este documento registra o estado atual do projeto para facilitar a continuidade 
 
 ## Fase
 
-**Desenvolvimento - Phase 9 Concluída - Projeto Completo**
+**Desenvolvimento - Protótipo Funcional + APK Android (22/09/2026)**
 
-Todas as phases implementadas com sucesso.
+Todas as phases implementadas. Em 22/09/2026 o protótipo foi colocado em funcionamento
+de ponta a ponta e gerado o APK Android para teste no celular.
 
 ---
 
@@ -102,18 +103,18 @@ Todas as phases implementadas com sucesso.
 
 ## Última Alteração
 
-Implementação da Phase 9: Polish & Cross-Cutting Concerns - Projeto Completo.
+**22/09/2026 - Correção join idempotente + voz entre 2 celulares na mesma conta**
 
-**Data**: 08/09/2026
+**Data**: 22/09/2026
 
 **Descrição**:
-- Atualizada documentação em docs/arquitetura.md
-- Criado utilitários comuns em backend/pkg/utils/helpers.go
-- Implementado rate limiting middleware
-- Implementado security configuration
-- Adicionadas validações de entrada e sanitização
-- Projeto 100% implementado (73/73 tarefas)
-- Atualizado PROJECT_STATE.md com status final
+- Join idempotente: reentrar em canal já pertencente retorna 200 (antes 409 → "Failed to join channel")
+- Hub de áudio não ecoa mais o pacote ao próprio remetente (supressão de eco movida p/ servidor)
+- VoiceScreen não suprime mais por `user_id` → 2 celulares na mesma conta se ouvem
+- Exceções de join/leave agora trazem status HTTP + corpo; script de validação 28/28 verdes
+- Backend reiniciado com novo `server.exe` (porta 8080); APK recompilado e copiado para `RadioPX.apk`
+- Pendente manual: liberar porta 8080 no Firewall do Windows (executar como administrador)
+- Teste em campo: 2 celulares logados na MESMA conta, criando canal e conversando via PTT
 
 ---
 

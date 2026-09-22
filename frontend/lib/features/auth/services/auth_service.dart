@@ -3,10 +3,11 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/config.dart';
 import '../models/user_model.dart';
 
 class AuthService {
-  final String baseUrl = 'http://localhost:8080';
+  final String baseUrl = AppConfig.apiBaseUrl;
   static const String _tokenKey = 'auth_token';
   static const String _refreshTokenKey = 'refresh_token';
   static const String _userKey = 'user_data';

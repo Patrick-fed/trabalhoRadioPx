@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:web_socket_channel/web_socket_channel.dart';
+
+import '../config.dart';
 
 class WebSocketService {
   WebSocketChannel? _channel;
@@ -16,22 +19,29 @@ class WebSocketService {
   Future<void> connect({
     required String channelId,
     required String userId,
-    String baseUrl = 'ws://localhost:8080',
   }) async {
     if (_isConnected) {
       await disconnect();
     }
 
     _currentChannelId = channelId;
-    final url = '$baseUrl/ws/audio?channel=$channelId&user_id=$userId';
+    final url =
+        '${AppConfig.wsBaseUrl}/ws/audio?channel=$channelId&user_id=$userId';
 
     try {
       _channel = WebSocketChannel.connect(Uri.parse(url));
 
       _channel!.stream.listen(
         (data) {
-          final message = jsonDecode(data as String) as Map<String, dynamic>;
-          _messageController.add(message);
+          try {
+            final decoded = jsonDecode(data as String);
+            if (decoded is Map<String, dynamic>) {
+              _messageController.add(decoded);
+            }
+          } catch (_) {
+            _messageController
+                .add({'type': 'error', 'error': 'Invalid message received'});
+          }
         },
         onDone: () {
           _isConnected = false;
@@ -58,15 +68,15 @@ class WebSocketService {
     _currentChannelId = null;
   }
 
-  void sendAudio(List<int> audioData) {
+  void sendAudio(List<int> audioData, {bool isPtt = true}) {
     if (!_isConnected || _channel == null) return;
 
     final message = jsonEncode({
       'type': 'audio',
       'payload': {
-        'audio': audioData,
-        'is_ptt': true,
-        'channel_id': _currentChannelId,
+        'room': _currentChannelId,
+        'audio': base64Encode(audioData),
+        'is_ptt': isPtt,
       },
     });
 

@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:geolocator/geolocator.dart';
 
 import '../models/location_model.dart';
@@ -20,9 +20,7 @@ class LocationService {
   Stream<LocationModel> get locationStream => _locationController.stream;
   bool get isTracking => _isTracking;
 
-  bool get _isDesktop {
-    return Platform.isWindows || Platform.isLinux || Platform.isMacOS;
-  }
+  bool get _isDesktop => kIsWeb;
 
   Future<bool> checkPermission() async {
     if (_isDesktop) return true;

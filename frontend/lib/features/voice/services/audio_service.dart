@@ -1,28 +1,51 @@
 import 'dart:async';
-import 'dart:io' show Platform;
 import 'dart:typed_data';
 
+import 'package:record/record.dart';
+
+import '../../../core/permissions/microphone_permission.dart';
+
 class AudioService {
+  final AudioRecorder _recorder = AudioRecorder();
+  StreamSubscription<Uint8List>? _streamSubscription;
   bool _isRecording = false;
-  StreamController<Uint8List>? _audioStreamController;
 
   bool get isRecording => _isRecording;
-  bool get _isDesktop => Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
   Future<bool> checkPermission() async {
-    return true;
+    return MicrophonePermission.checkAndRequestPermission();
   }
 
   Future<void> startRecording({
     required void Function(Uint8List audio) onData,
+    void Function()? onError,
   }) async {
     if (_isRecording) return;
 
-    _audioStreamController = StreamController<Uint8List>.broadcast();
-    _isRecording = true;
+    if (!await checkPermission()) {
+      onError?.call();
+      return;
+    }
 
-    if (!_isDesktop) {
-      // TODO: Implement real recording for mobile using platform channels
+    const config = RecordConfig(
+      encoder: AudioEncoder.pcm16bits,
+      sampleRate: 16000,
+      numChannels: 1,
+      autoGain: true,
+      echoCancel: false,
+    );
+
+    try {
+      final stream = await _recorder.startStream(config);
+      _streamSubscription = stream.listen(
+        onData,
+        onError: (Object e) {
+          onError?.call();
+        },
+      );
+      _isRecording = true;
+    } catch (_) {
+      onError?.call();
     }
   }
 
@@ -30,14 +53,20 @@ class AudioService {
     if (!_isRecording) return;
 
     _isRecording = false;
-    _audioStreamController?.close();
-    _audioStreamController = null;
+    await _streamSubscription?.cancel();
+    _streamSubscription = null;
+
+    try {
+      await _recorder.stop();
+    } catch (_) {
+      // Stream already stopped.
+    }
   }
 
-  Stream<Uint8List>? get audioStream => _audioStreamController?.stream;
-
   void dispose() {
-    stopRecording();
-    _audioStreamController?.close();
+    if (_isRecording) {
+      stopRecording();
+    }
+    _recorder.dispose();
   }
 }

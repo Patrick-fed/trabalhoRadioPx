@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/radiopx/backend/internal/auth"
@@ -64,6 +66,8 @@ func (a *authUserServiceAdapter) CreateOAuthUser(email, name, provider, provider
 var hub *ws.Hub
 
 func main() {
+	loadEnvFile()
+
 	hub = ws.NewHub()
 	go hub.Run()
 
@@ -148,9 +152,14 @@ func setupRoutes(
 	})
 	protected.HandleFunc("/api/v1/channels/", func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
-		if strings.HasSuffix(path, "/users") {
+		switch {
+		case strings.HasSuffix(path, "/users"):
 			channelHandler.HandleGetChannelUsers(w, r)
-		} else {
+		case strings.HasSuffix(path, "/join"):
+			channelHandler.HandleJoinChannel(w, r)
+		case strings.HasSuffix(path, "/leave"):
+			channelHandler.HandleLeaveChannel(w, r)
+		default:
 			channelHandler.HandleGetChannel(w, r)
 		}
 	})
@@ -199,6 +208,8 @@ func setupRoutes(
 	http.Handle("/api/v1/channels/leave", injector)
 	http.Handle("/api/v1/channels/nearby", injector)
 	http.Handle("/api/v1/channels/", injector)
+	http.Handle("/api/v1/user/profile", injector)
+	http.Handle("/api/v1/user/change-password", injector)
 
 	http.HandleFunc("/api/v1/location/update", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -343,4 +354,50 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, `{"status":"ok","service":"radiopx-backend","connections":%d}`, hub.GetClientCount())
+}
+
+func loadEnvFile() {
+	candidates := []string{".env", "../.env"}
+	dir, err := os.Getwd()
+	if err == nil {
+		candidates = append(candidates,
+			filepath.Join(dir, ".env"),
+			filepath.Join(dir, "..", ".env"),
+		)
+	}
+
+	seen := make(map[string]bool)
+	for _, path := range candidates {
+		abs, err := filepath.Abs(path)
+		if err != nil || seen[abs] {
+			continue
+		}
+		seen[abs] = true
+
+		f, err := os.Open(path)
+		if err != nil {
+			continue
+		}
+
+		scanner := bufio.NewScanner(f)
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			key := strings.TrimSpace(parts[0])
+			value := strings.TrimSpace(strings.Trim(parts[1], `"'`))
+			if key == "" {
+				continue
+			}
+			if os.Getenv(key) == "" {
+				os.Setenv(key, value)
+			}
+		}
+		f.Close()
+	}
 }

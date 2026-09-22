@@ -1,28 +1,41 @@
-import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:record/record.dart';
 
 class MicrophonePermission {
+  static bool _hasRequested = false;
+
   static Future<bool> checkPermission() async {
-    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-      return true;
+    if (kIsWeb) return true;
+
+    final recorder = AudioRecorder();
+    try {
+      return await recorder.hasPermission();
+    } catch (_) {
+      return false;
+    } finally {
+      recorder.dispose();
     }
-    return true;
   }
 
   static Future<bool> requestPermission() async {
-    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-      return true;
+    if (kIsWeb) return true;
+
+    final recorder = AudioRecorder();
+    try {
+      return await recorder.hasPermission();
+    } catch (_) {
+      return false;
+    } finally {
+      recorder.dispose();
     }
-    return true;
   }
 
   static Future<bool> checkAndRequestPermission() async {
-    if (await checkPermission()) {
-      return true;
-    }
+    final granted = await checkPermission();
+    if (granted) return true;
+    _hasRequested = true;
     return await requestPermission();
   }
 
-  static Future<void> openSettings() async {
-    // Desktop: no-op
-  }
+  static bool get hasRequested => _hasRequested;
 }

@@ -1,17 +1,9 @@
-import 'dart:io' show Platform;
-
 class LocationPermissionHelper {
   static Future<bool> checkPermission() async {
-    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-      return true;
-    }
     return true;
   }
 
   static Future<bool> requestPermission() async {
-    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-      return true;
-    }
     return true;
   }
 
@@ -23,9 +15,6 @@ class LocationPermissionHelper {
   }
 
   static Future<bool> isLocationServiceEnabled() async {
-    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-      return true;
-    }
     return true;
   }
 

@@ -4,9 +4,10 @@ import 'package:http/http.dart' as http;
 
 import '../models/channel_model.dart';
 import '../../auth/services/auth_service.dart';
+import '../../../core/config.dart';
 
 class ChannelService {
-  final String baseUrl = 'http://localhost:8080';
+  final String baseUrl = AppConfig.apiBaseUrl;
   final AuthService _authService = AuthService();
 
   Future<List<ChannelModel>> getNearbyChannels({
@@ -14,10 +15,12 @@ class ChannelService {
     required double longitude,
     double radiusKm = 10.0,
   }) async {
+    final headers = await _authService.getAuthHeaders();
     final response = await http.get(
       Uri.parse(
         '$baseUrl/api/v1/channels/nearby?lat=$latitude&lng=$longitude&radius=$radiusKm',
       ),
+      headers: headers,
     );
 
     if (response.statusCode == 200) {
@@ -76,7 +79,9 @@ class ChannelService {
     );
 
     if (response.statusCode != 200) {
-      throw Exception('Failed to join channel');
+      throw Exception(
+        'Failed to join channel (${response.statusCode}): ${response.body}',
+      );
     }
   }
 
@@ -88,7 +93,9 @@ class ChannelService {
     );
 
     if (response.statusCode != 200) {
-      throw Exception('Failed to leave channel');
+      throw Exception(
+        'Failed to leave channel (${response.statusCode}): ${response.body}',
+      );
     }
   }
 

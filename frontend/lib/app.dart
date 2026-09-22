@@ -91,6 +91,14 @@ class _MainScreenState extends State<MainScreen> {
     });
   }
 
+  void _onLeaveChannel() {
+    setState(() {
+      _selectedChannelId = null;
+      _selectedChannelName = null;
+      _currentIndex = 0;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final List<Widget> _screens = [
@@ -99,6 +107,7 @@ class _MainScreenState extends State<MainScreen> {
           ? VoiceScreen(
               channelId: _selectedChannelId!,
               channelName: _selectedChannelName!,
+              onLeaveChannel: _onLeaveChannel,
             )
           : const _NoChannelSelected(),
       const ProfileScreen(),

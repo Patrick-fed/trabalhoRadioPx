@@ -50,7 +50,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 func GenerateToken(userID, email, role string) (string, error) {
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
-		secret = "default-secret-change-in-production"
+		secret = "dev-secret-change-in-production"
 	}
 
 	claims := Claims{
@@ -71,7 +71,7 @@ func GenerateToken(userID, email, role string) (string, error) {
 func ValidateToken(tokenString string) (*Claims, error) {
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
-		secret = "default-secret-change-in-production"
+		secret = "dev-secret-change-in-production"
 	}
 
 	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {

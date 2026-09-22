@@ -4,6 +4,55 @@ Este documento registra todas as alterações significativas do projeto.
 
 ---
 
+## 22/09/2026 - Correção: Joining de canal e voz entre 2 celulares na mesma conta
+
+### Alterações
+
+- `backend/internal/channel/handler.go`: join idempotente — reentrar em canal que já pertence agora retorna 200 em vez de 409 (corrige "Failed to join channel" ao retocar o canal ou usar a mesma conta em 2 celulares)
+- `backend/pkg/websocket/hub.go`: broadcast de áudio não envia mais o pacote de volta ao próprio remetente (elimina o eco)
+- `frontend/lib/features/channels/services/channel_service.dart`: exceções de join/leave agora incluem status HTTP e corpo da resposta para facilitar diagnóstico
+- `frontend/lib/features/voice/screens/voice_screen.dart`: removida a supressão de eco por `user_id` (a supressão agora é feita no servidor) — permite que 2 celulares logados na mesma conta conversem entre si
+- `scripts/test-backend.ps1`: valida que join repetido retorna 200 (idempotente) e que o remetente NÃO recebe o próprio eco
+- APK release recompilado com as correções e copiado para `C:\RadioPx\RadioPX.apk`
+
+### Motivo
+
+Teste em campo com 2 celulares na mes ma conta falhava ao entrar no canal (409) e, se entrasse, cada aparelho silenciava o outro (supressão por user_id).
+
+### Resultado
+
+- Script de validação 28/28 verdes (incluindo idempotência e ausência de eco)
+- `go test ./...` verde; `flutter test` 20/20; `flutter analyze` sem erros
+
+---
+
+## 22/09/2026 - Protótipo Funcional + APK Android
+
+### Alterações
+
+- Backend Go compilado e rodando (`server.exe`) sem depender de PostgreSQL (dados em memória)
+- Adicionado carregamento automático do `.env` no `main.go` (JWT_SECRET/SERVER_PORT agora funcionam sem export manual)
+- Corrigido JWT secret: middleware de autenticação usa o mesmo fallback do `main.go`
+- Corrigidas rotas de canais: `/api/v1/channels/{id}/join` e `/api/v1/channels/{id}/leave`
+- Corrigidos endpoints de perfil: `/api/v1/user/profile` e `/api/v1/user/change-password` agora alcançáveis
+- Frontend: criado `lib/core/config.dart` com `API_BASE_URL` configurável via `--dart-define`
+- Frontend: services (auth/channels/profile) usam a config central
+- Frontend: `websocket_service.dart` corrigido (protocolo `room`, áudio em base64) e ligado na VoiceScreen
+- Voz real de ponta a ponta: captura PCM16 via `record`, streaming de reprodução via `just_audio` (StreamAudioSource + WAV)
+- PTT funcional: segurar grava e transmite via WebSocket, soltar para; supressão de eco próprio; reconexão automática
+- VoiceScreen: sair do canal e ver membros funcionais
+- Permissões Android adicionadas (INTERNET, RECORD_AUDIO, localização) + cleartext liberado
+- Pasta `android/` gerada e APK release compilado (assinado com debug key = instalável)
+- Testes Flutter 20/20 verdes; `flutter analyze` sem erros; backend `go test ./...` verde
+
+### Resultado
+
+- APK em `frontend/build/app/outputs/flutter-apk/app-release.apk` (cópia em `RadioPX.apk`)
+- Backend em `:8080`. Celular acessa via IP LAN da máquina (ex.: `http://172.16.158.222:8080`)
+- Observação: regra de firewall para porta 8080 exige execução como administrador
+
+---
+
 ## 08/09/2026 - Implementação Phase 9: Polish & Cross-Cutting Concerns
 
 ### Alterações

@@ -149,6 +149,12 @@ func (h *ChannelHandler) HandleJoinChannel(w http.ResponseWriter, r *http.Reques
 	}
 
 	if err := h.channelService.JoinChannel(userID, channelID); err != nil {
+		if err == ErrUserAlreadyInChannel {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]string{"message": "Already in channel"})
+			return
+		}
 		status := http.StatusConflict
 		if err == ErrChannelNotFound {
 			status = http.StatusNotFound

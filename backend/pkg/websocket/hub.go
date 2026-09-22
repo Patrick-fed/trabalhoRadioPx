@@ -62,6 +62,9 @@ func (h *Hub) Run() {
 			h.mu.RLock()
 			if clients, ok := h.rooms[message.Room]; ok {
 				for client := range clients {
+					if message.Sender != nil && client == message.Sender {
+						continue
+					}
 					select {
 					case client.send <- message:
 					default:
