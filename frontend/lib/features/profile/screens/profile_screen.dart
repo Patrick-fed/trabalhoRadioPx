@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../models/profile_model.dart';
 import '../services/profile_service.dart';
 import '../../auth/services/auth_service.dart';
-import '../../auth/screens/login_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -90,6 +89,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ElevatedButton(
               onPressed: _loadProfile,
               child: const Text('Tentar novamente'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _logout,
+              icon: const Icon(Icons.logout, color: Colors.red),
+              label: const Text(
+                'Sair',
+                style: TextStyle(color: Colors.red),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Colors.red),
+              ),
             ),
           ],
         ),
@@ -323,12 +334,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (confirmed == true) {
       await _authService.logout();
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const LoginScreen()),
-        );
-      }
     }
   }
 }

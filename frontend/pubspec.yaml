@@ -16,11 +16,11 @@ dependencies:
   geolocator: ^10.1.0
   google_fonts: ^6.1.0
   provider: ^6.1.1
-  just_audio: ^0.9.36
   path_provider: ^2.1.2
   http: ^1.2.0
   shared_preferences: ^2.2.0
   record: ^6.0.0
+  flutter_sound: ^9.28.0
 
 dev_dependencies:
   flutter_test:

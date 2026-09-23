@@ -103,18 +103,19 @@ de ponta a ponta e gerado o APK Android para teste no celular.
 
 ## Última Alteração
 
-**22/09/2026 - Correção join idempotente + voz entre 2 celulares na mesma conta**
+**22/09/2026 - Correção: logout, cadastro, login reativo e latência de áudio**
 
 **Data**: 22/09/2026
 
 **Descrição**:
-- Join idempotente: reentrar em canal já pertencente retorna 200 (antes 409 → "Failed to join channel")
-- Hub de áudio não ecoa mais o pacote ao próprio remetente (supressão de eco movida p/ servidor)
-- VoiceScreen não suprime mais por `user_id` → 2 celulares na mesma conta se ouvem
-- Exceções de join/leave agora trazem status HTTP + corpo; script de validação 28/28 verdes
-- Backend reiniciado com novo `server.exe` (porta 8080); APK recompilado e copiado para `RadioPX.apk`
-- Pendente manual: liberar porta 8080 no Firewall do Windows (executar como administrador)
-- Teste em campo: 2 celulares logados na MESMA conta, criando canal e conversando via PTT
+- Perfil usa `AppConfig.apiBaseUrl` (antes `localhost` fixo) → funciona no celular
+- `sessionState` (ValueNotifier) no AuthService; `AuthGate` agora é reativo — login/logout sem reiniciar o app
+- Cadastro aceita 200 e 201 e mostra o erro real do backend; e-mail duplicado vira mensagem amigável
+- Botão "Sair" sempre visível no perfil (inclusive no estado de erro)
+- Áudio replay reescrito com `flutter_sound` (sessão contínua PCM16 16kHz) — elimina o delay de ~2,5s do just_audio; `minSdk` 24
+- APK recompilado (50,4MB) com `API_BASE_URL=http://172.16.158.222:8080` e copiado para `RadioPX.apk`
+- `flutter analyze` sem erros; `flutter test` 20/20 verdes
+- Teste em campo sugerido: cadastrar (deve ir para home sem erro), sair da conta, relogar sem reiniciar o app e conferir latência do PTT entre 2 celulares
 
 ---
 
@@ -211,9 +212,9 @@ Nenhum.
 
 ## Última Atualização
 
-**Data**: 08/09/2026
+**Data**: 22/09/2026
 
-**Hora**: 00:00
+**Hora**: 21:30
 
 **Por**: OpenCode (assistente AI)
 

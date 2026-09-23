@@ -223,35 +223,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
         email: _emailController.text,
         password: _passwordController.text,
       );
-      
+
       if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const _RegisterSuccess()),
-        );
+        Navigator.of(context).popUntil((route) => route.isFirst);
       }
     } catch (e) {
-      setState(() {
-        _error = e.toString();
-      });
+      if (mounted) {
+        setState(() {
+          _error = e.toString().contains('already exists')
+              ? 'Este e-mail já está cadastrado. Faça login.'
+              : e.toString();
+        });
+      }
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
-  }
-}
-
-class _RegisterSuccess extends StatelessWidget {
-  const _RegisterSuccess();
-
-  @override
-  Widget build(BuildContext context) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      Navigator.of(context).popUntil((route) => route.isFirst);
-    });
-    return const Scaffold(
-      body: Center(child: CircularProgressIndicator()),
-    );
   }
 }

@@ -4,6 +4,36 @@ Este documento registra todas as alterações significativas do projeto.
 
 ---
 
+## 22/09/2026 - Correção: Logout quebrado, erro no cadastro, login travado e latência de áudio
+
+### Alterações
+
+- `frontend/lib/features/profile/services/profile_service.dart`: `baseUrl` fixa (`http://localhost:8080`) substituída por `AppConfig.apiBaseUrl` — perfil (e o botão Sair) funcionam no celular
+- `frontend/lib/features/auth/services/auth_service.dart`:
+  - novo `ValueNotifier<bool> sessionState` (liga/desliga toda vez que o token de sessão muda em `logout`/`_saveAuthData`)
+  - `register` aceita `200` e `201` (antes só `201` → missão confundia o sucesso com erro genérico)
+  - login e register agora propagam o corpo da resposta do backend via `_readError` (mensagens de erro reais, ex.: e-mail duplicado)
+- `frontend/lib/app.dart`: `AuthGate` escuta `AuthService.sessionState` e reavalia o estado de login — sem precisar reiniciar o app
+- `frontend/lib/features/auth/screens/login_screen.dart`: removido `_LoginSuccess` desnecessário; navegação agora é reativa (AuthGate troca o body); guards `mounted` nos `setState`
+- `frontend/lib/features/auth/screens/register_screen.dart`: sucesso volta para a tela inicial via `popUntil`; mensagem amigável para e-mail já cadastrado; guards `mounted`
+- `frontend/lib/features/profile/screens/profile_screen.dart`: botão "Sair" fica sempre visível (inclusive quando o perfil falha); `_logout` só fecha a sessão (o AuthGate cuida da navegação)
+- `frontend/lib/features/voice/services/stream_audio_player.dart`: reescrito com `flutter_sound` (sessão de streaming contínua PCM16/16kHz, `uint8ListSink`) — elimina o delay de ~2,5s do buffer inicial do `just_audio`
+- `frontend/lib/features/voice/screens/voice_screen.dart`: voz abre a sessão de áudio ao entrar no canal (`startSession`)
+- `frontend/pubspec.yaml`: `just_audio` removido; `flutter_sound ^9.28.0` adicionado
+- `frontend/android/app/build.gradle.kts`: `minSdk` elevado para 24 (requisito do flutter_sound)
+- APK release recompilado com `--dart-define=API_BASE_URL=http://172.16.158.222:8080` e copiado para `C:\RadioPx\RadioPX.apk`
+
+### Motivo
+
+Teste em campo: cadastro mostrava erro mesmo quando funcionava, login não entrava até reiniciar o app, não havia como sair da conta e o áudio tinha delay enorme.
+
+### Resultado
+
+- `flutter analyze` sem erros; `flutter test` 20/20 verdes
+- `flutter build apk --release` OK (50,4MB) → `C:\RadioPx\RadioPX.apk`
+
+---
+
 ## 22/09/2026 - Correção: Joining de canal e voz entre 2 celulares na mesma conta
 
 ### Alterações

@@ -43,7 +43,14 @@ class _AuthGateState extends State<AuthGate> {
   @override
   void initState() {
     super.initState();
+    AuthService.sessionState.addListener(_checkAuth);
     _checkAuth();
+  }
+
+  @override
+  void dispose() {
+    AuthService.sessionState.removeListener(_checkAuth);
+    super.dispose();
   }
 
   Future<void> _checkAuth() async {

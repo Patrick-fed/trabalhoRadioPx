@@ -2,11 +2,12 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../../../core/config.dart';
 import '../models/profile_model.dart';
 import '../../auth/services/auth_service.dart';
 
 class ProfileService {
-  final String baseUrl = 'http://localhost:8080';
+  final String baseUrl = AppConfig.apiBaseUrl;
   final AuthService _authService = AuthService();
 
   Future<ProfileModel> getProfile() async {

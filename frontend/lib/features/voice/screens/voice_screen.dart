@@ -56,6 +56,12 @@ class _VoiceScreenState extends State<VoiceScreen> {
     final uid = user?.id ?? 'anonymous';
     _userId = uid;
 
+    try {
+      await _streamPlayer.startSession();
+    } catch (_) {
+      // Sessão de áudio indisponível: segue sem reprodução de som.
+    }
+
     await _connectWebSocket();
   }
 

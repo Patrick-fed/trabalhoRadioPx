@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -11,6 +12,8 @@ class AuthService {
   static const String _tokenKey = 'auth_token';
   static const String _refreshTokenKey = 'refresh_token';
   static const String _userKey = 'user_data';
+
+  static final ValueNotifier<bool> sessionState = ValueNotifier<bool>(false);
 
   Future<UserModel> login({
     required String email,
@@ -34,8 +37,7 @@ class AuthService {
       
       return user;
     } else {
-      final error = jsonDecode(response.body);
-      throw Exception(error['error'] ?? 'Login failed');
+      throw Exception(_readError(response));
     }
   }
 
@@ -54,7 +56,7 @@ class AuthService {
       }),
     );
 
-    if (response.statusCode == 201) {
+    if (response.statusCode == 200 || response.statusCode == 201) {
       final data = jsonDecode(response.body);
       final token = data['token'] as String;
       final user = UserModel.fromJson(data['user']);
@@ -63,8 +65,7 @@ class AuthService {
       
       return user;
     } else {
-      final error = jsonDecode(response.body);
-      throw Exception(error['error'] ?? 'Registration failed');
+      throw Exception(_readError(response));
     }
   }
 
@@ -73,6 +74,7 @@ class AuthService {
     await prefs.remove(_tokenKey);
     await prefs.remove(_refreshTokenKey);
     await prefs.remove(_userKey);
+    sessionState.value = false;
   }
 
   Future<UserModel?> getCurrentUser() async {
@@ -129,6 +131,17 @@ class AuthService {
       await prefs.setString(_refreshTokenKey, refreshToken);
     }
     await prefs.setString(_userKey, jsonEncode(user.toJson()));
+    sessionState.value = true;
+  }
+
+  String _readError(http.Response response) {
+    try {
+      final error = jsonDecode(response.body);
+      if (error is Map && error['error'] is String) {
+        return error['error'] as String;
+      }
+    } catch (_) {}
+    return 'Falha na requisição (${response.statusCode})';
   }
 
   Future<Map<String, String>> getAuthHeaders() async {
