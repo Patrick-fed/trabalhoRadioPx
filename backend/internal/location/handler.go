@@ -22,8 +22,8 @@ func (h *LocationHandler) HandleUpdateLocation(w http.ResponseWriter, r *http.Re
 	}
 
 	var req struct {
-		UserID    string           `json:"user_id"`
-		Location  *LocationUpdate  `json:"location"`
+		UserID   string          `json:"user_id"`
+		Location *LocationUpdate `json:"location"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

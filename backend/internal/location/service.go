@@ -11,21 +11,21 @@ import (
 var ErrUserLocationNotFound = errors.New("user location not found")
 
 const (
-	EarthRadiusKm = 6371.0
-	DefaultRadiusKm = 10.0
+	EarthRadiusKm      = 6371.0
+	DefaultRadiusKm    = 10.0
 	MaxVisibleChannels = 15
 	MaxUsersPerChannel = 10
 )
 
 type LocationService struct {
-	mu              sync.RWMutex
-	userLocations   map[string]*Location
+	mu               sync.RWMutex
+	userLocations    map[string]*Location
 	channelLocations map[string]*Location
 }
 
 func NewLocationService() *LocationService {
 	return &LocationService{
-		userLocations:   make(map[string]*Location),
+		userLocations:    make(map[string]*Location),
 		channelLocations: make(map[string]*Location),
 	}
 }
@@ -102,13 +102,13 @@ func (s *LocationService) FindNearbyChannels(userID string, filter *ProximityFil
 
 		if distance <= radiusKm {
 			nearbyChannel := &NearbyChannel{
-				ChannelID:  channelID,
-				Name:       getChannelName(channelID),
-				Latitude:   channelLocation.Latitude,
-				Longitude:  channelLocation.Longitude,
-				Distance:   distance,
-				UserCount:  getChannelUserCount(channelID),
-				MaxUsers:   MaxUsersPerChannel,
+				ChannelID:   channelID,
+				Name:        getChannelName(channelID),
+				Latitude:    channelLocation.Latitude,
+				Longitude:   channelLocation.Longitude,
+				Distance:    distance,
+				UserCount:   getChannelUserCount(channelID),
+				MaxUsers:    MaxUsersPerChannel,
 				IsAvailable: getChannelUserCount(channelID) < MaxUsersPerChannel,
 			}
 			nearbyChannels = append(nearbyChannels, nearbyChannel)

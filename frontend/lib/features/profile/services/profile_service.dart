@@ -1,7 +1,6 @@
 import 'dart:convert';
 
-import 'package:http/http.dart' as http;
-
+import '../../../core/api_client.dart';
 import '../../../core/config.dart';
 import '../models/profile_model.dart';
 import '../../auth/services/auth_service.dart';
@@ -12,9 +11,9 @@ class ProfileService {
 
   Future<ProfileModel> getProfile() async {
     final headers = await _authService.getAuthHeaders();
-    
-    final response = await http.get(
-      Uri.parse('$baseUrl/api/v1/user/profile'),
+
+    final response = await apiGet(
+      '$baseUrl/api/v1/user/profile',
       headers: {
         'Content-Type': 'application/json',
         ...headers,
@@ -24,7 +23,7 @@ class ProfileService {
     if (response.statusCode == 200) {
       return ProfileModel.fromJson(jsonDecode(response.body));
     } else {
-      throw Exception('Failed to load profile');
+      throw Exception('Falha ao carregar o perfil');
     }
   }
 
@@ -34,9 +33,9 @@ class ProfileService {
     String? avatar,
   }) async {
     final headers = await _authService.getAuthHeaders();
-    
-    final response = await http.put(
-      Uri.parse('$baseUrl/api/v1/user/profile'),
+
+    final response = await apiPut(
+      '$baseUrl/api/v1/user/profile',
       headers: {
         'Content-Type': 'application/json',
         ...headers,
@@ -51,7 +50,7 @@ class ProfileService {
     if (response.statusCode == 200) {
       return ProfileModel.fromJson(jsonDecode(response.body));
     } else {
-      throw Exception('Failed to update profile');
+      throw Exception('Falha ao atualizar o perfil');
     }
   }
 
@@ -60,9 +59,9 @@ class ProfileService {
     required String newPassword,
   }) async {
     final headers = await _authService.getAuthHeaders();
-    
-    final response = await http.post(
-      Uri.parse('$baseUrl/api/v1/user/change-password'),
+
+    final response = await apiPost(
+      '$baseUrl/api/v1/user/change-password',
       headers: {
         'Content-Type': 'application/json',
         ...headers,
@@ -74,15 +73,15 @@ class ProfileService {
     );
 
     if (response.statusCode != 200) {
-      throw Exception('Failed to change password');
+      throw Exception('Falha ao alterar a senha');
     }
   }
 
   Future<void> deleteAccount() async {
     final headers = await _authService.getAuthHeaders();
-    
-    final response = await http.delete(
-      Uri.parse('$baseUrl/api/v1/user/profile'),
+
+    final response = await apiDelete(
+      '$baseUrl/api/v1/user/profile',
       headers: {
         'Content-Type': 'application/json',
         ...headers,
@@ -90,7 +89,7 @@ class ProfileService {
     );
 
     if (response.statusCode != 200) {
-      throw Exception('Failed to delete account');
+      throw Exception('Falha ao excluir a conta');
     }
   }
 }

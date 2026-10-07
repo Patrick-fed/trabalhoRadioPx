@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../api_client.dart';
 import '../config.dart';
 
 class WebSocketService {
@@ -28,37 +29,47 @@ class WebSocketService {
     final url =
         '${AppConfig.wsBaseUrl}/ws/audio?channel=$channelId&user_id=$userId';
 
+    final channel = WebSocketChannel.connect(Uri.parse(url));
+
     try {
-      _channel = WebSocketChannel.connect(Uri.parse(url));
-
-      _channel!.stream.listen(
-        (data) {
-          try {
-            final decoded = jsonDecode(data as String);
-            if (decoded is Map<String, dynamic>) {
-              _messageController.add(decoded);
-            }
-          } catch (_) {
-            _messageController
-                .add({'type': 'error', 'error': 'Invalid message received'});
-          }
-        },
-        onDone: () {
-          _isConnected = false;
-          _messageController.add({'type': 'disconnected'});
-        },
-        onError: (error) {
-          _isConnected = false;
-          _messageController.add({'type': 'error', 'error': error.toString()});
-        },
-      );
-
-      _isConnected = true;
-      _messageController.add({'type': 'connected'});
-    } catch (e) {
-      _isConnected = false;
-      _messageController.add({'type': 'error', 'error': e.toString()});
+      await channel.ready.timeout(apiTimeout);
+    } catch (_) {
+      // O sink só recebe destino quando o handshake conclui; fechar sem
+      // aguardar evita pendurar quando a conexão nunca se estabelece.
+      unawaited(channel.sink.close().timeout(
+        const Duration(seconds: 2),
+        onTimeout: () {},
+      ));
+      _currentChannelId = null;
+      throw Exception('Não foi possível conectar ao servidor de áudio.');
     }
+
+    _channel = channel;
+
+    channel.stream.listen(
+      (data) {
+        try {
+          final decoded = jsonDecode(data as String);
+          if (decoded is Map<String, dynamic>) {
+            _messageController.add(decoded);
+          }
+        } catch (_) {
+          _messageController
+              .add({'type': 'error', 'error': 'Invalid message received'});
+        }
+      },
+      onDone: () {
+        _isConnected = false;
+        _messageController.add({'type': 'disconnected'});
+      },
+      onError: (error) {
+        _isConnected = false;
+        _messageController.add({'type': 'error', 'error': error.toString()});
+      },
+    );
+
+    _isConnected = true;
+    _messageController.add({'type': 'connected'});
   }
 
   Future<void> disconnect() async {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/api_client.dart';
 import '../models/profile_model.dart';
 import '../services/profile_service.dart';
 import '../../auth/services/auth_service.dart';
@@ -41,7 +42,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } catch (e) {
       setState(() {
         _isLoading = false;
-        _error = 'Erro ao carregar perfil: ${e.toString()}';
+        _error = 'Erro ao carregar perfil: ${friendlyError(e)}';
       });
     }
   }
@@ -445,6 +446,8 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
 
+    final messenger = ScaffoldMessenger.of(context);
+
     setState(() {
       _isLoading = true;
     });
@@ -458,10 +461,16 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
 
       widget.onSave(updatedProfile);
       Navigator.pop(context);
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Perfil atualizado'),
+          backgroundColor: Colors.green,
+        ),
+      );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         SnackBar(
-          content: Text('Erro ao salvar: ${e.toString()}'),
+          content: Text('Erro ao salvar: ${friendlyError(e)}'),
           backgroundColor: Colors.red,
         ),
       );
@@ -610,7 +619,7 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Erro ao alterar senha: ${e.toString()}'),
+          content: Text('Erro ao alterar senha: ${friendlyError(e)}'),
           backgroundColor: Colors.red,
         ),
       );

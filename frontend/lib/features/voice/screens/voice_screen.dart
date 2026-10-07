@@ -40,10 +40,21 @@ class _VoiceScreenState extends State<VoiceScreen> {
   bool _isReceiving = false;
   bool _isChannelBusy = false;
   bool _connectionError = false;
+  bool _connectionFailed = false;
   String? _currentSpeaker;
   String? _userId;
   StreamSubscription<Map<String, dynamic>>? _wsSubscription;
-  bool _reconnecting = false;
+  Timer? _reconnectTimer;
+  int _reconnectAttempts = 0;
+
+  static const int _maxReconnectAttempts = 5;
+  static const List<Duration> _reconnectBackoff = [
+    Duration(seconds: 2),
+    Duration(seconds: 4),
+    Duration(seconds: 8),
+    Duration(seconds: 16),
+    Duration(seconds: 30),
+  ];
 
   @override
   void initState() {
@@ -71,20 +82,25 @@ class _VoiceScreenState extends State<VoiceScreen> {
     _wsSubscription?.cancel();
     await _webSocketService.disconnect();
 
-    await _webSocketService.connect(
-      channelId: widget.channelId,
-      userId: _userId ?? 'anonymous',
-    );
+    try {
+      await _webSocketService.connect(
+        channelId: widget.channelId,
+        userId: _userId ?? 'anonymous',
+      );
+    } catch (_) {
+      if (mounted) _scheduleReconnect();
+      return;
+    }
 
     _wsSubscription =
         _webSocketService.messageStream.listen(_onWebSocketMessage);
 
-    if (_webSocketService.isConnected) {
-      if (mounted) {
-        setState(() {
-          _connectionError = false;
-        });
-      }
+    if (mounted) {
+      setState(() {
+        _connectionError = false;
+        _connectionFailed = false;
+        _reconnectAttempts = 0;
+      });
     }
   }
 
@@ -94,7 +110,7 @@ class _VoiceScreenState extends State<VoiceScreen> {
         _handleAudioMessage(message);
         break;
       case 'disconnected':
-        _handleDisconnect();
+        _scheduleReconnect();
         break;
       case 'error':
         if (mounted) {
@@ -140,20 +156,41 @@ class _VoiceScreenState extends State<VoiceScreen> {
     }
   }
 
-  void _handleDisconnect() {
-    if (_reconnecting || !mounted) return;
+  void _scheduleReconnect() {
+    if (!mounted || _reconnectTimer != null) return;
 
-    _reconnecting = true;
-    if (mounted) {
+    if (_reconnectAttempts >= _maxReconnectAttempts) {
       setState(() {
+        _connectionFailed = true;
         _connectionError = true;
       });
+      return;
     }
 
-    Timer(const Duration(seconds: 2), () async {
-      _reconnecting = false;
-      await _connectWebSocket();
+    final delay = _reconnectBackoff[_reconnectAttempts];
+    _reconnectAttempts++;
+
+    setState(() {
+      _connectionError = true;
     });
+
+    _reconnectTimer = Timer(delay, () {
+      _reconnectTimer = null;
+      if (!mounted) return;
+      _connectWebSocket();
+    });
+  }
+
+  void _retryConnection() {
+    if (!mounted || _reconnectTimer != null) return;
+
+    setState(() {
+      _connectionFailed = false;
+      _connectionError = false;
+      _reconnectAttempts = 0;
+    });
+
+    _connectWebSocket();
   }
 
   Future<void> _startTalking() async {
@@ -212,7 +249,6 @@ class _VoiceScreenState extends State<VoiceScreen> {
       // Ignore errors on leave.
     }
     if (mounted) {
-      Navigator.of(context, rootNavigator: true).pop();
       widget.onLeaveChannel?.call();
     }
   }
@@ -261,6 +297,7 @@ class _VoiceScreenState extends State<VoiceScreen> {
 
   @override
   void dispose() {
+    _reconnectTimer?.cancel();
     _wsSubscription?.cancel();
     _audioService.dispose();
     _streamPlayer.dispose();
@@ -293,14 +330,19 @@ class _VoiceScreenState extends State<VoiceScreen> {
                   color: Colors.red.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Row(
+                child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.wifi_off, color: Colors.red, size: 18),
-                    SizedBox(width: 8),
+                    const Icon(Icons.wifi_off, color: Colors.red, size: 18),
+                    const SizedBox(width: 8),
                     Text(
-                      'Conexão perdida. Reconectando...',
-                      style: TextStyle(color: Colors.red, fontSize: 13),
+                      _connectionFailed
+                          ? 'Sem conexão com o servidor'
+                          : 'Conexão perdida. Reconectando...',
+                      style: const TextStyle(
+                        color: Colors.red,
+                        fontSize: 13,
+                      ),
                     ),
                   ],
                 ),
@@ -375,12 +417,26 @@ class _VoiceScreenState extends State<VoiceScreen> {
             ],
             const SizedBox(height: 48),
 
-            PttButton(
-              isTransmitting: _isTransmitting,
-              isChannelBusy: _isChannelBusy,
-              onPressed: _startTalking,
-              onReleased: _stopTalking,
-            ),
+            if (_connectionFailed) ...[
+              ElevatedButton.icon(
+                onPressed: _retryConnection,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Tentar novamente'),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Não foi possível conectar ao servidor. Verifique se ele está '
+                'rodando e na mesma rede.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey, fontSize: 13),
+              ),
+            ] else
+              PttButton(
+                isTransmitting: _isTransmitting,
+                isChannelBusy: _isChannelBusy,
+                onPressed: _startTalking,
+                onReleased: _stopTalking,
+              ),
             const SizedBox(height: 32),
 
             Container(

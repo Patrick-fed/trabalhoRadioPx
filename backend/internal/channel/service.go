@@ -24,9 +24,9 @@ var (
 )
 
 type ChannelService struct {
-	mu           sync.RWMutex
-	channels     map[string]*Channel
-	channelUsers map[string][]string
+	mu              sync.RWMutex
+	channels        map[string]*Channel
+	channelUsers    map[string][]string
 	locationService *location.LocationService
 }
 
@@ -50,14 +50,15 @@ func (s *ChannelService) CreateChannel(userID string, req *CreateChannelRequest)
 		Latitude:    req.Latitude,
 		Longitude:   req.Longitude,
 		MaxUsers:    MaxUsersPerChannel,
-		UserCount:   0,
-		IsAvailable: true,
+		UserCount:   1,
+		IsAvailable: 1 < MaxUsersPerChannel,
 		CreatedBy:   userID,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
 
 	s.channels[channel.ID] = channel
+	s.channelUsers[channel.ID] = []string{userID}
 
 	s.locationService.UpdateChannelLocation(channel.ID, &location.Location{
 		ID:        channel.ID,
@@ -236,7 +237,7 @@ func (s *ChannelService) GetUserChannels(userID string) []*Channel {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var userChannels []*Channel
+	userChannels := make([]*Channel, 0)
 
 	for channelID, users := range s.channelUsers {
 		for _, u := range users {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/api_client.dart';
 import '../services/auth_service.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -230,9 +231,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString().contains('already exists')
+          final text = friendlyError(e);
+          _error = text.contains('already exists')
               ? 'Este e-mail já está cadastrado. Faça login.'
-              : e.toString();
+              : text;
         });
       }
     } finally {

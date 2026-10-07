@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/api_client.dart';
 import '../../../core/config.dart';
 import '../models/user_model.dart';
 
@@ -19,8 +20,8 @@ class AuthService {
     required String email,
     required String password,
   }) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/api/v1/auth/login'),
+    final response = await apiPost(
+      '$baseUrl/api/v1/auth/login',
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'email': email,
@@ -46,8 +47,8 @@ class AuthService {
     required String email,
     required String password,
   }) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/api/v1/auth/register'),
+    final response = await apiPost(
+      '$baseUrl/api/v1/auth/register',
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'name': name,
@@ -102,8 +103,8 @@ class AuthService {
     
     if (refreshToken == null) return null;
 
-    final response = await http.post(
-      Uri.parse('$baseUrl/api/v1/auth/refresh'),
+    final response = await apiPost(
+      '$baseUrl/api/v1/auth/refresh',
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'refresh_token': refreshToken,

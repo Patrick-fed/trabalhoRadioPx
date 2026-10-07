@@ -21,14 +21,14 @@ type LocationUpdate struct {
 }
 
 type NearbyChannel struct {
-	ChannelID  string  `json:"channel_id"`
-	Name       string  `json:"name"`
-	Latitude   float64 `json:"latitude"`
-	Longitude  float64 `json:"longitude"`
-	Distance   float64 `json:"distance"`
-	UserCount  int     `json:"user_count"`
-	MaxUsers   int     `json:"max_users"`
-	IsAvailable bool   `json:"is_available"`
+	ChannelID   string  `json:"channel_id"`
+	Name        string  `json:"name"`
+	Latitude    float64 `json:"latitude"`
+	Longitude   float64 `json:"longitude"`
+	Distance    float64 `json:"distance"`
+	UserCount   int     `json:"user_count"`
+	MaxUsers    int     `json:"max_users"`
+	IsAvailable bool    `json:"is_available"`
 }
 
 type ProximityFilter struct {

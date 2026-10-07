@@ -46,8 +46,8 @@ func TestChannelService_JoinChannel(t *testing.T) {
 	}
 
 	updated, _ := service.GetChannel(channel.ID)
-	if updated.UserCount != 1 {
-		t.Errorf("Expected 1 user, got %d", updated.UserCount)
+	if updated.UserCount != 2 {
+		t.Errorf("Expected 2 users (creator + user2), got %d", updated.UserCount)
 	}
 }
 
@@ -87,8 +87,8 @@ func TestChannelService_LeaveChannel(t *testing.T) {
 	}
 
 	updated, _ := service.GetChannel(channel.ID)
-	if updated.UserCount != 0 {
-		t.Errorf("Expected 0 users, got %d", updated.UserCount)
+	if updated.UserCount != 1 {
+		t.Errorf("Expected 1 user (only the creator), got %d", updated.UserCount)
 	}
 }
 
@@ -102,8 +102,8 @@ func TestChannelService_ChannelFull(t *testing.T) {
 		Longitude: -46.6333,
 	})
 
-	// Fill the channel to capacity
-	for i := 1; i <= MaxUsersPerChannel; i++ {
+	// The creator is already a member, so only MaxUsersPerChannel-1 others fit.
+	for i := 2; i <= MaxUsersPerChannel; i++ {
 		service.JoinChannel(fmt.Sprintf("user%d", i), channel.ID)
 	}
 

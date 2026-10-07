@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:geolocator/geolocator.dart';
 
+import '../../../core/api_client.dart';
 import '../models/location_model.dart';
 
 class LocationService {
@@ -113,6 +114,7 @@ class LocationService {
     try {
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
+        timeLimit: apiTimeout,
       );
 
       return LocationModel(

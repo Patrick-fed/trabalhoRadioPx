@@ -189,9 +189,15 @@ func (h *UserHandler) HandleUpdateUserProfile(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	user, err := h.userService.GetUser(userID)
+	if err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusNotFound)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"message": "User updated"})
+	json.NewEncoder(w).Encode(user)
 }
 
 func (h *UserHandler) HandleChangePasswordByUserID(w http.ResponseWriter, r *http.Request, userID string) {

@@ -2,7 +2,9 @@ package channel
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -288,37 +290,18 @@ func extractChannelID(path string) string {
 	return ""
 }
 
+var errEmptyNumber = errors.New("empty number")
+
 func parseFloat(s string) (float64, error) {
-	var f float64
-	_, err := parseFloatValue(s, &f)
-	return f, err
-}
-
-func parseFloatValue(s string, f *float64) (int, error) {
-	n := 0
-	sign := 1.0
-
-	if n < len(s) && s[n] == '-' {
-		sign = -1.0
-		n++
+	trimmed := strings.TrimSpace(s)
+	if trimmed == "" {
+		return 0, errEmptyNumber
 	}
 
-	for n < len(s) && s[n] >= '0' && s[n] <= '9' {
-		*f = *f*10 + float64(s[n]-'0')
-		n++
+	f, err := strconv.ParseFloat(trimmed, 64)
+	if err != nil {
+		return 0, err
 	}
 
-	if n < len(s) && s[n] == '.' {
-		n++
-		decimal := 0.1
-		for n < len(s) && s[n] >= '0' && s[n] <= '9' {
-			*f += float64(s[n]-'0') * decimal
-			decimal /= 10
-			n++
-		}
-	}
-
-	*f *= sign
-
-	return n, nil
+	return f, nil
 }

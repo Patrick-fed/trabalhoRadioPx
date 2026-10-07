@@ -6,10 +6,15 @@ Este documento registra o estado atual do projeto para facilitar a continuidade 
 
 ## Fase
 
-**Desenvolvimento - Protótipo Funcional + APK Android (22/09/2026)**
+**Desenvolvimento - Protótipo Funcional + APK Android (06/10/2026)**
 
 Todas as phases implementadas. Em 22/09/2026 o protótipo foi colocado em funcionamento
-de ponta a ponta e gerado o APK Android para teste no celular.
+de ponta a ponta e gerado o APK Android para teste no celular. Em 04/10/2026 foi corrigida
+a atualização automática da lista de canais em testes de campo com 2 aparelhos. Em 06/10/2026
+foi eliminado o carregamento infinito na tela de entrada: timeout de 10s em todas as chamadas
+HTTP, erros em português e reconexão do WebSocket com backoff e teto de tentativas. No mesmo
+dia foi corrigido o salvamento de perfil, que falhava com `type 'Null' is not a subtype of
+type 'String'`.
 
 ---
 
@@ -103,7 +108,102 @@ de ponta a ponta e gerado o APK Android para teste no celular.
 
 ## Última Alteração
 
-**22/09/2026 - Correção: logout, cadastro, login reativo e latência de áudio**
+**06/10/2026 - Correção: salvar nome no perfil falhava com "type 'Null' is not a subtype of type 'String'"**
+
+**Data**: 06/10/2026
+
+**Descrição**:
+- **Causa**: `PUT /api/v1/user/profile` respondia `200` com `{"message":"User updated"}` (`backend/internal/user/handler.go`), mas `ProfileService.updateProfile` fazia `ProfileModel.fromJson(jsonDecode(response.body))` — `json['id'] as String` recebia `null` → `type 'Null' is not a subtype of type 'String'`
+- O dado salvava porque o `UpdateUser` roda **antes** de responder; o nome só aparecia ao voltar porque `app.dart` recria as telas na troca de aba e o `initState` refaz `_loadProfile()`
+- "Não dava resposta": o `throw` ocorre **antes** do `Navigator.pop`, então a bottom sheet não fechava; e o `catch` mostrava o erro cru, já que `friendlyError()` só remove o prefixo `Exception: ` (`TypeError` não é `Exception`)
+- **Pré-existente, não relacionado** ao trabalho de timeouts do mesmo dia (confirmado no `git diff`); varredura em todo o frontend mostrou que **só** este endpoint tinha corpo de resposta divergente (auth, channels, change-password e delete estavam corretos)
+- **Backend**: `HandleUpdateUserProfile` agora chama `GetUser` após o update e devolve o objeto `User`, espelhando `HandleGetUserProfile`; `Password` segue `json:"-"`
+- **Backend**: `backend/internal/user/handler_test.go` (novo, primeiro teste de handler do projeto) — `TestUserHandler_HandleUpdateUserProfile` exige `id`/`email`/`name` no `200`, confere persistência e ausência do `password`; `..._NotFound` cobre `404`. Usa `httptest` direto, pois a assinatura recebe `userID` por parâmetro
+- **Frontend**: `_saveProfile` captura o `ScaffoldMessenger` **antes** do `await` e o reutiliza nos dois caminhos; sucesso agora fecha a sheet e mostra **"Perfil atualizado"** (verde)
+- Backend reiniciado a partir do fonte; APK recompilado (50,8MB) e copiado para `RadioPX.apk`
+
+**Verificação** (conferida, não presumida): `go build ./...` + `go test ./...` verde com os testes novos; `flutter analyze` = **15 issues**, subconjunto do baseline de 16 (saiu um `use_build_context_synchronously` pré-existente, **zero novos**); `flutter test` 20/20; `GET /health` → `200 {"status":"ok",...}`; `aapt2` → `launchMode=2` e `taskAffinity` ausente; `libapp.so` contém `172.16.158.222` e `Perfil atualizado`, não contém `10.201.108.96`.
+
+**Motivo**: teste em campo — "ao editar o nome no perfil quando se aperta no salvar ele não dá resposta, dá um erro de subtype string null, mas quando volta o perfil foi alterado".
+
+**Fragilidade mantida**: no caminho de sucesso o `finally { setState(...) }` roda logo após `Navigator.pop` — funciona porque a bottom sheet ainda está na animação de saída.
+
+**Teste em campo sugerido**: editar nome → Salvar → sheet fecha e exibe "Perfil atualizado"; reabrir o perfil mantém o nome. Com o backend parado deve aparecer "Erro ao salvar: Não foi possível conectar ao servidor…". Observação: reiniciar o backend zera os usuários em memória (o `UserService` é um mapa em RAM), então é esperado recriar as contas de teste.
+
+---
+
+## Alteração Anterior
+
+**06/10/2026 - Correção: app ficava carregando infinitamente ao entrar (sem timeout)**
+
+**Data**: 06/10/2026
+
+**Descrição**:
+- **Causa**: o APK embutia `API_BASE_URL=http://10.201.108.96:8080` e a máquina voltou a responder em `172.16.158.222` → host inalcançável
+- **Por pendurar em vez de dar erro**: nenhuma das 14 chamadas HTTP do frontend tinha timeout (busca por `.timeout(` em `lib/`: zero) → com o `SYN` sem resposta o TCP retenta ~2min → a Future nunca completa → os `catch`/`finally` que zeram `_isLoading` nunca rodam → `CircularProgressIndicator` eterno
+- **O IP oscila**: `172.16.158.222` (build 22/09) → `10.201.108.96` (build 04/10, quando se supôs que o anterior estava "obsoleto") → `172.16.158.222` (build atual). Já voltou a ser o valor antigo, então não é troca de sub-rede — embarcar IP transitório no binário é insustentável
+- Novo `frontend/lib/core/api_client.dart`: `apiTimeout = 10s`, `apiGet`/`apiPost`/`apiPut`/`apiDelete` com timeout que traduz `TimeoutException`/`SocketException`/`http.ClientException` para mensagens em PT-BR, e `friendlyError()` que remove o prefixo `Exception: ` nas mensagens da UI
+- 14 chamadas migradas: `auth_service` (3), `channel_service` (7), `profile_service` (4)
+- 11 mensagens de serviço traduzidas de EN para PT-BR (`channel_service` 7, `profile_service` 4); `register_screen` segue detectando `already exists` na mensagem do backend
+- `location_service.dart`: `timeLimit: apiTimeout` no `getCurrentPosition` (verificado que o geolocator 10.1.1 aceita `Duration? timeLimit`)
+- `websocket_service.dart`: `await channel.ready.timeout()` passa a detectar falha real de handshake — antes a linha `_isConnected = true` rodava antes de existir conexão (falso positivo) e o `try/catch` não capturava nada, porque `WebSocketChannel.connect` é lazy. `sink.close()` em falha é disparado sem aguardar (teto de 2s), já que o `WebSocketSinkCompleter` só recebe destino após handshake
+- `voice_screen.dart`: backoff exponencial 2/4/8/16/30s com teto de **5 tentativas**; um único `Timer?` cancelado no `dispose()` (antes o Timer solto podia disparar depois); sucesso zera os contadores. Esgotou → estado terminal `_connectionFailed`: banner "Sem conexão com o servidor" e o botão PTT é substituído por **"Tentar novamente"** + instrução
+- `friendlyError` aplicado em 11 pontos de UI: `login_screen`, `register_screen`, `channels_screen` (4), `profile_screen` (3), `channel_detail_screen` (2)
+- APK recompilado (50,8MB) com `API_BASE_URL=http://172.16.158.222:8080` e copiado para `RadioPX.apk`
+
+**Verificação** (conferida no artefato, não presumida): `flutter analyze` = **16 issues, os mesmos 16 do baseline** (zero novos); `flutter test` 20/20; `go test ./...` verde; `aapt2` → `launchMode=2` (singleTask) e `taskAffinity` ausente; `libapp.so` contém `172.16.158.222` e as strings novas (`Verifique a conex`, `Falha ao carregar canais pr`, `Sem conex`) e **não** contém `10.201.108.96`.
+
+**Motivo**: teste em campo — "na hora que tentamos entrar, apenas fica carregando infinitamente".
+
+**Pendências abertas**:
+- URL editável em runtime = **decisão pendente** (exige RF/RNF novo em `docs/requisitos.md`)
+- Reserva DHCP/IP estático no roteador = causa raiz da troca, vive fora do repo
+- Em web o `ready` é `Future.value()` (stub) → a detecção de falha de handshake do WebSocket não é efetiva nessa plataforma; o alvo de teste é APK
+- Validar em campo: com o backend parado, entrar num canal deve exibir a mensagem de erro em ~10s (não spinner) e o login deve cair no retry da reconexão
+
+**Relacionado**: corrige/substitui a entrada de 04/10/2026, que registrou o build com `10.201.108.96` acreditando que `172.16.158.222` estava obsoleto — hoje o valor correto é `172.16.158.222` de novo.
+
+---
+
+## Alterações Anteriores
+
+### 04/10/2026 - Correção: app abria em múltiplas instâncias em vez de ir para segundo plano
+
+**Data**: 04/10/2026
+
+**Descrição**:
+- `frontend/android/app/src/main/AndroidManifest.xml`: removido `android:taskAffinity=""` e `launchMode` alterado de `singleTop` para `singleTask`
+- Consequência corrigida: launcher criava uma task nova por lançamento (múltiplas cópias no recents), cada uma com WebSocket e sessão `flutter_sound` próprios → áudio dobrado e PTT duplicado
+- APK release recompilado com `API_BASE_URL=http://10.201.108.96:8080` (o IP do APK anterior, `172.16.158.222`, está obsoleto — a rede mudou) e copiado para `RadioPX.apk` (50,8MB)
+- Correção conferida no artefato: `aapt2` reporta `launchMode=2` (singleTask) e ausência de `taskAffinity`; `libapp.so` contém o IP novo e não contém o antigo
+
+**Relacionado**: este era provavelmente o mesmo bug reportado como "não há opção de sair do canal" — a única forma de sair fica na tela de voz (engrenagem → "Sair do Canal") e o ícone do launcher abria outra instância, então o usuário nunca retornava àquela tela.
+
+**Validação em campo pendente**: abrir o app, entrar num canal, ir para a tela inicial e tocar no ícone 3-4 vezes (deve retomar na mesma tela, 1 entrada no recents); depois revalidar o fluxo de sair. Se ainda falhar, expor botão visível de sair na tela de voz.
+
+### 04/10/2026 - Correção: lista de canais não atualiza automaticamente
+
+**Data**: 04/10/2026
+
+**Descrição**:
+- `ChannelsScreen` agora faz polling automático a cada 10s nas listas "Meus canais" e "Perto de mim"
+- Refresh de polling é **silencioso**: não mexe em `_isLoading`/`_error`, logo não troca o `TabBarView` por spinner de tela cheia nem reseta aba/scroll; erro de rede é ignorado em vez de virar tela de erro
+- Refresh inicial, botão refresh e pull-to-refresh seguem mostrando loading via `_refresh({required bool showLoading})` — nenhum call site mudou
+- Guarda de concorrência `_isRefreshing` + `_sameChannels` (só chama `setState` se algo mudou)
+- Localização em cache com TTL de 2min; refresh manual continua forçando GPS fresco
+- `WidgetsBindingObserver`: pausa o timer em background e atualiza imediatamente ao voltar ao foreground
+
+**Motivo**: ao criar um canal no celular B, o celular A só exibia o canal novo depois de trocar de aba. O `ChannelsScreen` só buscava dados em `initState`/refresh manual, e o reload ao trocar de aba era acidental (o `State` é destruído e recriado por `app.dart`).
+
+**Resultado**: `flutter analyze` sem novos issues, `flutter test` 20/20 verdes, `go test ./...` verde.
+
+**Pendências abertas** (não alteradas aqui):
+- `backend/internal/channel/model.go` — `Channel` não tem campo `distance`; `GetNearbyChannels` só usa a distância para ordenar e nunca a serializa → a linha de distância do card de canal nunca aparece (exige mudança de backend)
+- `frontend/lib/app.dart` — telas construídas dentro do `build` destroem o `State` ao trocar de aba (perda de estado); irrelevante para a atualização da lista, mas é a causa raiz do comportamento original
+
+**Teste em campo sugerido**: 2 celulares na mesma conta, criar canal no B e observar "Perto de mim" no A em até ~10s sem tocar em nada; depois testar ida ao background → foreground (deve atualizar na hora) e modo avião (não pode virar tela de erro).
+
+### 22/09/2026 - Correção: logout, cadastro, login reativo e latência de áudio
 
 **Data**: 22/09/2026
 
@@ -134,7 +234,13 @@ de ponta a ponta e gerado o APK Android para teste no celular.
 
 ## Problemas Conhecidos
 
-Nenhum.
+1. **Distância dos canais nunca aparece** — `backend/internal/channel/model.go`: a struct `Channel` não possui campo `distance`. `GetNearbyChannels` calcula a distância apenas para ordenar e nunca a serializa, então `ChannelModel.distance` é sempre `null` e o card de canal não renderiza a linha de distância (channels_screen.dart). Correção exige adicionar o campo ao modelo e popular no handler.
+2. **Estado das telas perdido ao trocar de aba** — `frontend/lib/app.dart` monta a lista de telas dentro do `build` (`body: _screens[_currentIndex]`), então o `State` é destruído e recriado a cada troca de aba. Não afeta mais a atualização da lista de canais (que agora é por polling), mas faz scroll e aba interna voltarem ao padrão. Correção sugerida: `IndexedStack` + atualização explícita ao selecionar a aba.
+3. **Validação em campo pendente da correção de instância única** — a mudança no manifesto (`taskAffinity` removido, `singleTask`) foi conferida no APK gerado via `aapt2`, mas o comportamento no aparelho ainda precisa ser validado: tocar no ícone do launcher 3-4 vezes com o app em background deve retomar na mesma tela e manter 1 entrada no recents. Se o fluxo "sair do canal" (engrenagem → "Sair do Canal") continuar falhando depois disso, o próximo passo é expor um botão visível de sair na tela de voz — hoje ele está 2 níveis abaixo de um ícone de engrenagem.
+4. **IP do servidor embutido no APK fica obsoleto a cada troca de DHCP** — `API_BASE_URL` entra no binário pelo `--dart-define` do build, e o endereço da máquina oscila entre `172.16.158.222` e `10.201.108.96` (histórico: 22/09 → 04/10 → 06/10), quebrando o APK a cada troca. Mitigação aplicada em 06/10/2026: timeout de 10s + mensagem clara de erro (antes era spinner infinito). Correção real exige reserva DHCP/IP estático no roteador (fora do repo) ou URL editável em runtime (esta exige RF/RNF novo em `docs/requisitos.md`).
+5. **Validação em campo pendente do timeout/reconexão** — a detecção de falha de handshake do WebSocket foi conferida na fonte do `web_socket_channel 2.4.5` e no código, mas não em aparelho: com o backend parado, entrar num canal deve exibir a mensagem de erro em ~10s e a tela de voz deve passar por 5 tentativas com backoff até o botão "Tentar novamente". Em web esse comportamento não é garantido (o `ready` lá é stub).
+6. **Backend não usa PostgreSQL — tudo é em memória** — `internal/user/service.go`, `internal/channel/service.go` e `internal/location/service.go` guardam os dados em `map` protegidos por `sync.RWMutex`; não existe `database/sql`, pgx ou gorm em lugar nenhum do código. Isso **diverge** de `docs/decisoes.md` (DEC-001) e `docs/banco-de-dados.md`, que definem PostgreSQL 14+ como banco principal. Consequência prática: reiniciar o backend zera usuários, canais e localizações, então as contas de teste precisam ser recriadas a cada reinício. Correção exige implementar a persistência já prevista na documentação.
+7. **`setState` logo após `Navigator.pop` no salvamento de perfil** — em `profile_screen.dart`, o `finally { setState(...) }` de `_saveProfile` executa logo após o `pop` do caminho de sucesso. Hoje funciona porque a bottom sheet ainda está na animação de saída, mas é frágil: se a animação mudar, pode virar `setState() called after dispose()`.
 
 ---
 
@@ -212,9 +318,9 @@ Nenhum.
 
 ## Última Atualização
 
-**Data**: 22/09/2026
+**Data**: 06/10/2026
 
-**Hora**: 21:30
+**Hora**: 2026-10-06
 
 **Por**: OpenCode (assistente AI)
 
@@ -227,3 +333,4 @@ Nenhum.
 3. **Monitoramento**: Implementar logs e métricas
 4. **Documentação**: Atualizar README com instruções de deploy
 5. **Google OAuth**: Implementar login social (futuro)
+6. **IP do servidor**: a URL do backend entra no binário via `--dart-define` e oscila junto com o DHCP (ver Problemas Conhecidos nº 4). Resolver com reserva DHCP no roteador, ou tornando a URL editável em runtime — esta última exige RF/RNF novo em `docs/requisitos.md` (decisão pendente)

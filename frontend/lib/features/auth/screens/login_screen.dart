@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/api_client.dart';
 import '../services/auth_service.dart';
 import 'register_screen.dart';
 
@@ -177,7 +178,7 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _error = friendlyError(e);
         });
       }
     } finally {

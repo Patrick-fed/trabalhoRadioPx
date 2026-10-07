@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/api_client.dart';
 import '../models/channel_model.dart';
 import '../services/channel_service.dart';
 import '../../voice/screens/voice_screen.dart';
@@ -47,7 +48,7 @@ class _ChannelDetailScreenState extends State<ChannelDetailScreen> {
     } catch (e) {
       setState(() {
         _isLoading = false;
-        _error = 'Erro ao carregar detalhes do canal: ${e.toString()}';
+        _error = 'Erro ao carregar detalhes do canal: ${friendlyError(e)}';
       });
     }
   }
@@ -333,7 +334,7 @@ class _ChannelDetailScreenState extends State<ChannelDetailScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erro ao entrar no canal: ${e.toString()}'),
+            content: Text('Erro ao entrar no canal: ${friendlyError(e)}'),
             backgroundColor: Colors.red,
           ),
         );

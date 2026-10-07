@@ -1,9 +1,8 @@
 import 'dart:convert';
 
-import 'package:http/http.dart' as http;
-
 import '../models/channel_model.dart';
 import '../../auth/services/auth_service.dart';
+import '../../../core/api_client.dart';
 import '../../../core/config.dart';
 
 class ChannelService {
@@ -16,10 +15,8 @@ class ChannelService {
     double radiusKm = 10.0,
   }) async {
     final headers = await _authService.getAuthHeaders();
-    final response = await http.get(
-      Uri.parse(
-        '$baseUrl/api/v1/channels/nearby?lat=$latitude&lng=$longitude&radius=$radiusKm',
-      ),
+    final response = await apiGet(
+      '$baseUrl/api/v1/channels/nearby?lat=$latitude&lng=$longitude&radius=$radiusKm',
       headers: headers,
     );
 
@@ -27,21 +24,21 @@ class ChannelService {
       final List<dynamic> data = jsonDecode(response.body);
       return data.map((json) => ChannelModel.fromJson(json)).toList();
     } else {
-      throw Exception('Failed to load nearby channels');
+      throw Exception('Falha ao carregar canais próximos');
     }
   }
 
   Future<ChannelModel> getChannel(String channelId) async {
     final headers = await _authService.getAuthHeaders();
-    final response = await http.get(
-      Uri.parse('$baseUrl/api/v1/channels/$channelId'),
+    final response = await apiGet(
+      '$baseUrl/api/v1/channels/$channelId',
       headers: headers,
     );
 
     if (response.statusCode == 200) {
       return ChannelModel.fromJson(jsonDecode(response.body));
     } else {
-      throw Exception('Failed to load channel');
+      throw Exception('Falha ao carregar o canal');
     }
   }
 
@@ -51,8 +48,8 @@ class ChannelService {
     required double longitude,
   }) async {
     final headers = await _authService.getAuthHeaders();
-    final response = await http.post(
-      Uri.parse('$baseUrl/api/v1/channels'),
+    final response = await apiPost(
+      '$baseUrl/api/v1/channels',
       headers: {
         'Content-Type': 'application/json',
         ...headers,
@@ -67,42 +64,42 @@ class ChannelService {
     if (response.statusCode == 201) {
       return ChannelModel.fromJson(jsonDecode(response.body));
     } else {
-      throw Exception('Failed to create channel');
+      throw Exception('Falha ao criar o canal');
     }
   }
 
   Future<void> joinChannel(String channelId) async {
     final headers = await _authService.getAuthHeaders();
-    final response = await http.post(
-      Uri.parse('$baseUrl/api/v1/channels/$channelId/join'),
+    final response = await apiPost(
+      '$baseUrl/api/v1/channels/$channelId/join',
       headers: headers,
     );
 
     if (response.statusCode != 200) {
       throw Exception(
-        'Failed to join channel (${response.statusCode}): ${response.body}',
+        'Falha ao entrar no canal (${response.statusCode}): ${response.body}',
       );
     }
   }
 
   Future<void> leaveChannel(String channelId) async {
     final headers = await _authService.getAuthHeaders();
-    final response = await http.post(
-      Uri.parse('$baseUrl/api/v1/channels/$channelId/leave'),
+    final response = await apiPost(
+      '$baseUrl/api/v1/channels/$channelId/leave',
       headers: headers,
     );
 
     if (response.statusCode != 200) {
       throw Exception(
-        'Failed to leave channel (${response.statusCode}): ${response.body}',
+        'Falha ao sair do canal (${response.statusCode}): ${response.body}',
       );
     }
   }
 
   Future<List<ChannelModel>> getUserChannels() async {
     final headers = await _authService.getAuthHeaders();
-    final response = await http.get(
-      Uri.parse('$baseUrl/api/v1/channels'),
+    final response = await apiGet(
+      '$baseUrl/api/v1/channels',
       headers: headers,
     );
 
@@ -110,14 +107,14 @@ class ChannelService {
       final List<dynamic> data = jsonDecode(response.body);
       return data.map((json) => ChannelModel.fromJson(json)).toList();
     } else {
-      throw Exception('Failed to load user channels');
+      throw Exception('Falha ao carregar seus canais');
     }
   }
 
   Future<List<String>> getChannelUsers(String channelId) async {
     final headers = await _authService.getAuthHeaders();
-    final response = await http.get(
-      Uri.parse('$baseUrl/api/v1/channels/$channelId/users'),
+    final response = await apiGet(
+      '$baseUrl/api/v1/channels/$channelId/users',
       headers: headers,
     );
 
@@ -125,7 +122,7 @@ class ChannelService {
       final List<dynamic> data = jsonDecode(response.body);
       return data.map((e) => e.toString()).toList();
     } else {
-      throw Exception('Failed to load channel users');
+      throw Exception('Falha ao carregar os membros do canal');
     }
   }
 }
