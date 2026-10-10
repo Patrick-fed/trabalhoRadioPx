@@ -70,6 +70,27 @@ void main() {
       expect(user.initials, 'A');
     });
 
+    test('fromJson tolerates missing id/email', () {
+      final user = UserModel.fromJson({'name': 'Only Name'});
+
+      expect(user.id, '');
+      expect(user.email, '');
+      expect(user.name, 'Only Name');
+    });
+
+    test('fromJson tolerates null id/email', () {
+      final user = UserModel.fromJson({'id': null, 'email': null});
+
+      expect(user.id, '');
+      expect(user.email, '');
+    });
+
+    test('displayName/initials safe with empty email and name', () {
+      const user = UserModel(id: '', email: '');
+      expect(user.displayName, '?');
+      expect(user.initials, '?');
+    });
+
     test('copyWith preserves unchanged fields', () {
       const user = UserModel(
         id: '1',

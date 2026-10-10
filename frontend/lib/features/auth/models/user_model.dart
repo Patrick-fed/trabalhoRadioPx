@@ -23,18 +23,18 @@ class UserModel {
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
     return UserModel(
-      id: json['id'] as String,
-      email: json['email'] as String,
+      id: json['id'] as String? ?? '',
+      email: json['email'] as String? ?? '',
       name: json['name'] as String?,
       avatar: json['avatar'] as String?,
       provider: json['provider'] as String?,
       providerId: json['provider_id'] as String?,
       isActive: json['is_active'] as bool? ?? true,
-      createdAt: json['created_at'] != null
-          ? DateTime.parse(json['created_at'] as String)
+      createdAt: json['created_at'] is String
+          ? DateTime.tryParse(json['created_at'] as String)
           : null,
-      updatedAt: json['updated_at'] != null
-          ? DateTime.parse(json['updated_at'] as String)
+      updatedAt: json['updated_at'] is String
+          ? DateTime.tryParse(json['updated_at'] as String)
           : null,
     );
   }
@@ -77,13 +77,18 @@ class UserModel {
     );
   }
 
-  String get displayName => name ?? email.split('@').first;
+  String get displayName {
+    if (name != null && name!.trim().isNotEmpty) return name!.trim();
+    if (email.isNotEmpty) return email.split('@').first;
+    return '?';
+  }
 
   String get initials {
-    if (name != null && name!.isNotEmpty) {
-      return name!.substring(0, 1).toUpperCase();
+    if (name != null && name!.trim().isNotEmpty) {
+      return name!.trim().substring(0, 1).toUpperCase();
     }
-    return email.substring(0, 1).toUpperCase();
+    if (email.isNotEmpty) return email.substring(0, 1).toUpperCase();
+    return '?';
   }
 
   @override

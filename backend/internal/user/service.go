@@ -3,6 +3,8 @@ package user
 import (
 	"errors"
 	"fmt"
+	"net/mail"
+	"strings"
 	"sync"
 	"time"
 
@@ -10,12 +12,25 @@ import (
 )
 
 var (
-	ErrUserNotFound      = errors.New("user not found")
-	ErrUserAlreadyExists = errors.New("user already exists")
-	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrEmailRequired     = errors.New("email is required")
-	ErrPasswordRequired  = errors.New("password is required")
+	ErrUserNotFound       = errors.New("usuário não encontrado")
+	ErrUserAlreadyExists  = errors.New("este e-mail já está cadastrado")
+	ErrInvalidCredentials = errors.New("e-mail ou senha inválidos")
+	ErrEmailRequired      = errors.New("o e-mail é obrigatório")
+	ErrPasswordRequired   = errors.New("a senha é obrigatória")
+	ErrInvalidEmail       = errors.New("e-mail inválido")
+	ErrPasswordTooShort   = errors.New("a senha deve ter pelo menos 8 caracteres")
 )
+
+const minPasswordLength = 8
+
+func normalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
+func validEmail(email string) bool {
+	addr, err := mail.ParseAddress(email)
+	return err == nil && addr.Address == email
+}
 
 type UserService struct {
 	mu    sync.RWMutex
@@ -32,11 +47,18 @@ func (s *UserService) CreateUser(req *CreateUserRequest) (*User, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	req.Email = normalizeEmail(req.Email)
 	if req.Email == "" {
 		return nil, ErrEmailRequired
 	}
+	if !validEmail(req.Email) {
+		return nil, ErrInvalidEmail
+	}
 	if req.Password == "" {
 		return nil, ErrPasswordRequired
+	}
+	if len(req.Password) < minPasswordLength {
+		return nil, ErrPasswordTooShort
 	}
 
 	for _, user := range s.users {
@@ -83,6 +105,7 @@ func (s *UserService) GetUserByEmail(email string) (*User, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	email = normalizeEmail(email)
 	for _, user := range s.users {
 		if user.Email == email {
 			return user, nil
@@ -105,7 +128,7 @@ func (s *UserService) UpdateUser(userID string, req *UpdateUserRequest) error {
 		user.Name = req.Name
 	}
 	if req.Email != "" {
-		user.Email = req.Email
+		user.Email = normalizeEmail(req.Email)
 	}
 	if req.Avatar != "" {
 		user.Avatar = req.Avatar
@@ -133,6 +156,7 @@ func (s *UserService) Authenticate(email, password string) (*User, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	email = normalizeEmail(email)
 	var foundUser *User
 	for _, user := range s.users {
 		if user.Email == email {
@@ -182,6 +206,7 @@ func (s *UserService) CreateOAuthUser(email, name, provider, providerID string) 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	email = normalizeEmail(email)
 	for _, user := range s.users {
 		if user.Email == email && user.Provider == provider {
 			return user, nil

@@ -1,0 +1,4 @@
+# Variáveis de ambiente — NUNCA versionar segredos (ver AGENTS.md)
+.env
+.env.*
+!.env.example

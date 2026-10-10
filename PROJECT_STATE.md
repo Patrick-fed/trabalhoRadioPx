@@ -6,15 +6,11 @@ Este documento registra o estado atual do projeto para facilitar a continuidade 
 
 ## Fase
 
-**Desenvolvimento - Protótipo Funcional + APK Android (06/10/2026)**
+**Desenvolvimento - Protótipo Funcional + APK Android (10/10/2026 - revisão do login)**
 
-Todas as phases implementadas. Em 22/09/2026 o protótipo foi colocado em funcionamento
-de ponta a ponta e gerado o APK Android para teste no celular. Em 04/10/2026 foi corrigida
-a atualização automática da lista de canais em testes de campo com 2 aparelhos. Em 06/10/2026
-foi eliminado o carregamento infinito na tela de entrada: timeout de 10s em todas as chamadas
-HTTP, erros em português e reconexão do WebSocket com backoff e teto de tentativas. No mesmo
-dia foi corrigido o salvamento de perfil, que falhava com `type 'Null' is not a subtype of
-type 'String'`.
+Em 10/10/2026 o fluxo de login (RF02) foi auditado e endurecido: JWT consolidado em fonte única
+(auth service + middleware injetado), refresh token passou a ser usado de verdade, e-mail
+normalizado, validações em PT-BR, senha mínima 8 e correção do bug que impedia excluir a conta.
 
 ---
 
@@ -107,6 +103,39 @@ type 'String'`.
 ---
 
 ## Última Alteração
+
+**10/10/2026 - Revisão do login: consolidação JWT, refresh token ativo e correção de bugs**
+
+**Data**: 10/10/2026
+
+**Descrição**:
+- **Backend**: removido `internal/auth/middleware.go` (código morto); `middleware.AuthMiddleware`
+  passou a receber um `TokenValidator` injetado (fonte única = `auth.AuthService`), com exigência de
+  algoritmo **HS256**; claim `type` (`access`/`refresh`) e rejeição de token do tipo trocado em
+  `/auth/refresh`; e-mail normalizado (`trim`+lowercase) em todo o fluxo de usuário; validação de
+  e-mail (`net/mail`) e senha mínima de 8 caracteres; mensagens de erro em PT-BR; `DELETE
+  /api/v1/user/profile` corrigido (usava `extractUserID`, que procurava o segmento `"users"` e
+  sempre retornava 400 → conta nunca era excluída)
+- **Frontend**: `isLoggedIn()` valida a expiração do JWT (`token_validity.dart`, `dart:convert`) e
+  renova silenciosamente via refresh token; `getAuthHeaders()` renova token expirado antes das
+  chamadas (liga o `refreshToken()` que era código morto) e desloga se a renovação falhar; e-mail
+  com `trim()`; senha mínima 8; `"E-mail ou senha inválidos"` amigável no login; `UserModel`
+  tolerante a `id`/`email` ausentes
+- **Segurança**: `backend/.env` saiu do versionamento (`git rm --cached` + `backend/.gitignore`;
+  `.env.example` segue rastreado como template). Backend sobe sem `.env` graças ao fallback dev do
+  `main.go` e so ignora variáveis já definidas (parser stdlib, sem dependência nova).
+- **Testes**: `cmd/server/main_test.go` (10 casos de handler) no backend; `token_validity_test.dart`
+  (8 casos) + `UserModel` defensivo (3 casos) no frontend
+
+**Verificação**:
+- `go build ./...` + `go vet ./...` + `go test ./...` verdes
+- `flutter analyze`: 15 issues (baseline, zero novos) · `flutter test`: 31/31 (era 20/20)
+- E2E com servidor real do fonte: register 201 (e-mail normalizado), duplicado 409 PT, senha curta
+  400 PT, login com maiúsculas/espaços 200, senha errada 401 PT, access token em `/auth/refresh`
+  401, refresh token 200, `GET`/`DELETE /api/v1/user/profile` 200
+- Detalhes completos em `CHANGELOG.md`
+
+---
 
 **06/10/2026 - Correção: salvar nome no perfil falhava com "type 'Null' is not a subtype of type 'String'"**
 
@@ -318,9 +347,9 @@ type 'String'`.
 
 ## Última Atualização
 
-**Data**: 06/10/2026
+**Data**: 10/10/2026
 
-**Hora**: 2026-10-06
+**Hora**: 2026-10-10
 
 **Por**: OpenCode (assistente AI)
 

@@ -176,7 +176,7 @@ func setupRoutes(
 		case http.MethodPut:
 			userHandler.HandleUpdateUserProfile(w, r, userID)
 		case http.MethodDelete:
-			userHandler.HandleDeleteUser(w, r)
+			userHandler.HandleDeleteUserByID(w, r, userID)
 		default:
 			http.Error(w, `{"error":"Method not allowed"}`, http.StatusMethodNotAllowed)
 		}
@@ -190,14 +190,14 @@ func setupRoutes(
 		userHandler.HandleChangePasswordByUserID(w, r, userID)
 	})
 
-	protectedWithAuth := middleware.AuthMiddleware(protected)
+	protectedWithAuth := middleware.AuthMiddleware(authService)(protected)
 
 	injector := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := extractToken(r)
 		if token != "" {
-			claims, err := middleware.ValidateToken(token)
-			if err == nil && claims.UserID != "" {
-				r.Header.Set("X-User-ID", claims.UserID)
+			userID, err := authService.ValidateAccessToken(token)
+			if err == nil && userID != "" {
+				r.Header.Set("X-User-ID", userID)
 			}
 		}
 		protectedWithAuth.ServeHTTP(w, r)
@@ -246,7 +246,7 @@ func handleRegister(w http.ResponseWriter, r *http.Request, userService *user.Us
 		Password string `json:"password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"Invalid request body"}`, http.StatusBadRequest)
+		http.Error(w, `{"error":"Corpo da requisição inválido"}`, http.StatusBadRequest)
 		return
 	}
 
@@ -257,7 +257,8 @@ func handleRegister(w http.ResponseWriter, r *http.Request, userService *user.Us
 	})
 	if err != nil {
 		status := http.StatusConflict
-		if err == user.ErrEmailRequired || err == user.ErrPasswordRequired {
+		switch err {
+		case user.ErrEmailRequired, user.ErrPasswordRequired, user.ErrInvalidEmail, user.ErrPasswordTooShort:
 			status = http.StatusBadRequest
 		}
 		http.Error(w, `{"error":"`+err.Error()+`"}`, status)
@@ -290,13 +291,13 @@ func handleLogin(w http.ResponseWriter, r *http.Request, authService *auth.AuthS
 		Password string `json:"password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"Invalid request body"}`, http.StatusBadRequest)
+		http.Error(w, `{"error":"Corpo da requisição inválido"}`, http.StatusBadRequest)
 		return
 	}
 
-	tokenPair, err := authService.Login(req.Email, req.Password)
+	tokenPair, err := authService.Login(strings.TrimSpace(req.Email), req.Password)
 	if err != nil {
-		http.Error(w, `{"error":"Invalid credentials"}`, http.StatusUnauthorized)
+		http.Error(w, `{"error":"E-mail ou senha inválidos"}`, http.StatusUnauthorized)
 		return
 	}
 
@@ -325,13 +326,13 @@ func handleRefresh(w http.ResponseWriter, r *http.Request, authService *auth.Aut
 		RefreshToken string `json:"refresh_token"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"Invalid request body"}`, http.StatusBadRequest)
+		http.Error(w, `{"error":"Corpo da requisição inválido"}`, http.StatusBadRequest)
 		return
 	}
 
 	tokenPair, err := authService.RefreshToken(req.RefreshToken)
 	if err != nil {
-		http.Error(w, `{"error":"Invalid refresh token"}`, http.StatusUnauthorized)
+		http.Error(w, `{"error":"Token inválido ou expirado"}`, http.StatusUnauthorized)
 		return
 	}
 

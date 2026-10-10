@@ -110,7 +110,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       if (value == null || value.isEmpty) {
                         return 'Por favor, insira seu email';
                       }
-                      if (!value.contains('@')) {
+                      if (!value.trim().contains('@')) {
                         return 'Por favor, insira um email válido';
                       }
                       return null;
@@ -141,8 +141,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       if (value == null || value.isEmpty) {
                         return 'Por favor, insira sua senha';
                       }
-                      if (value.length < 6) {
-                        return 'A senha deve ter pelo menos 6 caracteres';
+                      if (value.length < 8) {
+                        return 'A senha deve ter pelo menos 8 caracteres';
                       }
                       return null;
                     },
@@ -220,8 +220,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     try {
       await _authService.register(
-        name: _nameController.text,
-        email: _emailController.text,
+        name: _nameController.text.trim(),
+        email: _emailController.text.trim(),
         password: _passwordController.text,
       );
 

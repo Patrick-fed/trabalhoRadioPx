@@ -4,6 +4,99 @@ Este documento registra todas as alterações significativas do projeto.
 
 ---
 
+## 10/10/2026 - Revisão do login: consolidação JWT, refresh token ativo e correção de bugs
+
+### Contexto
+
+Auditoria completa do fluxo de autenticação (RF02) na branch `feature-login`. O login já
+funcionava no caminho feliz, mas havia código JWT duplicado, um bug latente na exclusão de
+conta e o refresh token existia mas nunca era usado.
+
+### Alterações
+
+**Backend**
+
+- `internal/auth/middleware.go` — **removido** (código morto: `AuthMiddleware` duplicado não era
+  referenciado em lugar nenhum).
+- `internal/middleware/auth.go` — `AuthMiddleware` agora recebe um `TokenValidator` injetado
+  (implementado pelo `auth.AuthService`, fonte única de verificação de JWT). Removidos o segundo
+  `Claims`, `GenerateToken` e `ValidateToken` que liam `JWT_SECRET` por conta própria. `Bearer`
+  passa a ser aceito sem diferenciar maiúsculas/minúsculas.
+- `internal/auth/service.go` — validação agora exige algoritmo **HS256** (evita alg-confusion);
+  novo claim `type` (`access`/`refresh`); novo `ValidateAccessToken` que retorna `userID` e
+  rejeita refresh token usado como access; `RefreshToken` rejeita access token usado como refresh.
+- `internal/user/service.go` — e-mail normalizado (`trim` + lowercase) em `CreateUser`,
+  `Authenticate`, `GetUserByEmail`, `UpdateUser` e `CreateOAuthUser`; validação de e-mail
+  (`net/mail`, stdlib) e senha mínima de 8 caracteres (alinhado ao RF01). Erros traduzidos para
+  PT-BR (`este e-mail já está cadastrado`, `a senha deve ter pelo menos 8 caracteres`, etc.).
+- `internal/user/handler.go` — removidos handlers mortos por path (`HandleCreateUser`,
+  `HandleGetUser`, `HandleUpdateUser`, `HandleDeleteUser`, `HandleListUsers`,
+  `HandleChangePassword`, `extractUserID`). Novo `HandleDeleteUserByID`.
+- `cmd/server/main.go` — middleware e injetor passam a usar `authService.ValidateAccessToken`;
+  DELETE `/api/v1/user/profile` agora passa o `userID` (corrige o bug de excluir conta que
+  sempre respondia 400, pois `extractUserID` procurava o segmento `"users"`); `handleRegister`/
+  `handleLogin`/`handleRefresh` com mensagens em PT-BR e validação (400) para campos vazios,
+  e-mail inválido e senha curta.
+- `cmd/server/main_test.go` (novo) — 10 testes dos handlers: register sucesso/duplicado/inputs
+  inválidos, login sucesso/senha errada/normalização de e-mail, refresh rejeitando access token e
+  aceitando refresh token.
+
+**Frontend**
+
+- `lib/features/auth/services/token_validity.dart` (novo) — decodifica `exp` do JWT com
+  `dart:convert` (sem dependência nova): `jwtExpiry` e `tokenIsExpired`.
+- `lib/features/auth/services/auth_service.dart` — `isLoggedIn()` passou a validar a expiração do
+  access token e, se expirado, **renova silenciosamente** via refresh token antes de deslogar;
+  `getAuthHeaders()` renova proativamente token expirado e faz logout se a renovação falhar
+  (liga o `refreshToken()` que era código morto); guard `_refreshingSession` evita loops.
+- `login_screen.dart` / `register_screen.dart` — e-mail com `trim()`; senha mínima de 8
+  caracteres; login mapeia `Invalid credentials`/senha inválida para `"E-mail ou senha inválidos"`.
+- `user_model.dart` — parsing defensivo (`id`/`email` toleram ausência/nulo, datas via
+  `DateTime.tryParse`); `displayName`/`initials` não quebram com e-mail vazio (retornam `?`).
+- Testes: `token_validity_test.dart` (8 casos) + casos de `UserModel` tolerante no
+  `models_test.dart` (3 casos).
+
+### Motivo
+
+Revisão solicitada do login: confirmar o que funciona, apontar o que falta e corrigir bugs.
+
+### Verificação
+
+- `go build ./...` + `go vet ./...` + `go test ./...` verdes (inclui os 10 testes novos de handler).
+- `flutter analyze`: **15 issues — os mesmos 15 do baseline, zero novos** (durante o trabalho chegou
+  a 16 com um erro real em `isLoggedIn` — variável `refreshToken` sombreava o método — corrigido).
+- `flutter test`: **31/31** (era 20/20).
+- Fluxo E2E contra o backend real (servidor iniciado do fonte, depois encerrado):
+  register 201 com e-mail normalizado para lowercase; duplicado → 409 PT; senha curta → 400 PT;
+  login com `Mixed.User@Example.com` + espaços → 200; senha errada → 401 PT; access token em
+  `/auth/refresh` → 401; refresh token → 200; `GET /api/v1/user/profile` → 200; `DELETE
+  /api/v1/user/profile` → 200 (antes sempre 400).
+
+### Segurança (adicional)
+
+- `backend/.env` **removido do versionamento** (`git rm --cached`) — o arquivo pode conter
+  `JWT_SECRET`/credenciais Google, o que a regra do AGENTS.md proíbe (nunca committar segredos).
+  O arquivo permanece no disco (ignorado pelo novo `backend/.gitignore`, que mantém
+  `.env.example` rastreado como template).
+- O servidor não depende do arquivo para subir: `main.go` usa fallback dev
+  (`dev-secret-change-in-production`) quando `JWT_SECRET` não está definido, e o `loadEnvFile`
+  próprio (parser stdlib, sem biblioteca externa) só injeta variáveis ausentes. Smoke test
+  comprovou boot sem `.env` (health OK).
+- **Nota**: o segredo antigo continua no histórico do git. Purga definitiva exigiria reescrever o
+  histórico (`filter-repo`), o que é arriscado num repo acadêmico — recomendado apenas se o repositório
+  for público. Para o TCC, troque o `JWT_SECRET` antes de qualquer exposição.
+
+### Pendências abertas (fora de escopo)
+
+- **Google OAuth** (parte do RF02) não implementado — exige nova dependência (`google_sign_in`) e
+  decisão de escopo.
+- `internal/middleware/cors.go`, `logging.go` e `ratelimit.go` ainda são código aparentemente não
+  usado pelo `main.go` (que usa `github.com/rs/cors` e não aplica rate limit) — candidatos a remoção
+  em tarefa futura.
+- Backend continua em memória (mapas) — PostgreSQL segue pendente (PROJECT_STATE, problema nº 6).
+
+---
+
 ## 06/10/2026 - Correção: salvar nome no perfil falhava com "type 'Null' is not a subtype of type 'String'"
 
 ### Causa

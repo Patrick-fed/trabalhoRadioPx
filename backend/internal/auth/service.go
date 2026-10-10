@@ -8,9 +8,14 @@ import (
 )
 
 var (
-	ErrInvalidToken     = errors.New("invalid token")
-	ErrTokenExpired     = errors.New("token expired")
+	ErrInvalidToken       = errors.New("invalid token")
+	ErrTokenExpired       = errors.New("token expired")
 	ErrInvalidCredentials = errors.New("invalid credentials")
+)
+
+const (
+	TokenTypeAccess  = "access"
+	TokenTypeRefresh = "refresh"
 )
 
 type AuthService struct {
@@ -38,6 +43,7 @@ type Claims struct {
 	Email    string `json:"email"`
 	Name     string `json:"name"`
 	Provider string `json:"provider"`
+	Type     string `json:"type"`
 	jwt.RegisteredClaims
 }
 
@@ -67,6 +73,9 @@ func (s *AuthService) Login(email, password string) (*TokenPair, error) {
 
 func (s *AuthService) ValidateToken(tokenString string) (*Claims, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, ErrInvalidToken
+		}
 		return s.secretKey, nil
 	})
 
@@ -85,10 +94,29 @@ func (s *AuthService) ValidateToken(tokenString string) (*Claims, error) {
 	return claims, nil
 }
 
+// ValidateAccessToken verifies an access token and returns the user ID. It
+// rejects tokens that are not of the access type (e.g. refresh tokens).
+func (s *AuthService) ValidateAccessToken(tokenString string) (string, error) {
+	claims, err := s.ValidateToken(tokenString)
+	if err != nil {
+		return "", err
+	}
+
+	if claims.Type != TokenTypeAccess {
+		return "", ErrInvalidToken
+	}
+
+	return claims.UserID, nil
+}
+
 func (s *AuthService) RefreshToken(refreshToken string) (*TokenPair, error) {
 	claims, err := s.ValidateToken(refreshToken)
 	if err != nil {
 		return nil, err
+	}
+
+	if claims.Type != TokenTypeRefresh {
+		return nil, ErrInvalidToken
 	}
 
 	user, err := s.userService.GetUser(claims.UserID)
@@ -112,6 +140,7 @@ func (s *AuthService) generateTokenPair(user *User) (*TokenPair, error) {
 		Email:    user.Email,
 		Name:     user.Name,
 		Provider: user.Provider,
+		Type:     TokenTypeAccess,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expiresAt),
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -127,6 +156,7 @@ func (s *AuthService) generateTokenPair(user *User) (*TokenPair, error) {
 
 	refreshClaims := &Claims{
 		UserID: user.ID,
+		Type:   TokenTypeRefresh,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(s.refreshExpiry)),
 			IssuedAt:  jwt.NewNumericDate(now),

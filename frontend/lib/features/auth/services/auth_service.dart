@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/api_client.dart';
 import '../../../core/config.dart';
 import '../models/user_model.dart';
+import 'token_validity.dart';
 
 class AuthService {
   final String baseUrl = AppConfig.apiBaseUrl;
@@ -15,6 +16,8 @@ class AuthService {
   static const String _userKey = 'user_data';
 
   static final ValueNotifier<bool> sessionState = ValueNotifier<bool>(false);
+
+  bool _refreshingSession = false;
 
   Future<UserModel> login({
     required String email,
@@ -93,8 +96,26 @@ class AuthService {
   }
 
   Future<bool> isLoggedIn() async {
-    final token = await getToken();
-    return token != null;
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString(_tokenKey);
+
+    if (token == null) return false;
+    if (!tokenIsExpired(token)) return true;
+
+    // Access token expired: try the silent renewal before giving up.
+    if (_refreshingSession) return false;
+    final savedRefreshToken = prefs.getString(_refreshTokenKey);
+    if (savedRefreshToken == null) return false;
+
+    _refreshingSession = true;
+    try {
+      final user = await refreshToken();
+      return user != null;
+    } catch (_) {
+      return false;
+    } finally {
+      _refreshingSession = false;
+    }
   }
 
   Future<UserModel?> refreshToken() async {
@@ -146,9 +167,19 @@ class AuthService {
   }
 
   Future<Map<String, String>> getAuthHeaders() async {
-    final token = await getToken();
+    final prefs = await SharedPreferences.getInstance();
+    var token = prefs.getString(_tokenKey);
     if (token == null) return {};
-    
+
+    if (tokenIsExpired(token)) {
+      // Expired access token on a real API call: try to renew once. On failure
+      // refreshToken() logs out, so no 401 wall of errors reaches the UI.
+      final user = await refreshToken();
+      if (user == null) return {};
+      token = prefs.getString(_tokenKey);
+    }
+
+    if (token == null || token.isEmpty) return {};
     return {
       'Authorization': 'Bearer $token',
     };

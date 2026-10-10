@@ -88,7 +88,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       if (value == null || value.isEmpty) {
                         return 'Por favor, insira seu email';
                       }
-                      if (!value.contains('@')) {
+                      if (!value.trim().contains('@')) {
                         return 'Por favor, insira um email válido';
                       }
                       return null;
@@ -119,8 +119,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       if (value == null || value.isEmpty) {
                         return 'Por favor, insira sua senha';
                       }
-                      if (value.length < 6) {
-                        return 'A senha deve ter pelo menos 6 caracteres';
+                      if (value.length < 8) {
+                        return 'A senha deve ter pelo menos 8 caracteres';
                       }
                       return null;
                     },
@@ -172,13 +172,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       await _authService.login(
-        email: _emailController.text,
+        email: _emailController.text.trim(),
         password: _passwordController.text,
       );
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = friendlyError(e);
+          final text = friendlyError(e);
+          _error = _isInvalidCredentials(text)
+              ? 'E-mail ou senha inválidos'
+              : text;
         });
       }
     } finally {
@@ -188,5 +191,12 @@ class _LoginScreenState extends State<LoginScreen> {
         });
       }
     }
+  }
+
+  bool _isInvalidCredentials(String text) {
+    final lower = text.toLowerCase();
+    return lower.contains('invalid credentials') ||
+        lower.contains('inválidos') ||
+        lower.contains('invalid token');
   }
 }
