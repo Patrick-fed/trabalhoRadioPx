@@ -2,6 +2,9 @@ package auth
 
 import (
 	"testing"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 type mockUserService struct {
@@ -96,6 +99,41 @@ func TestAuthService_ValidateToken_Invalid(t *testing.T) {
 	_, err := authService.ValidateToken("invalid-token")
 	if err != ErrInvalidToken {
 		t.Errorf("Expected ErrInvalidToken, got %v", err)
+	}
+}
+
+func TestAuthService_ValidateToken_RejectsNonHS256(t *testing.T) {
+	const secret = "test-secret-key-that-is-long-enough-for-jwt"
+	mockService := newMockUserService()
+	authService := NewAuthService(secret, mockService)
+
+	claims := &Claims{
+		UserID: "user1",
+		Type:   TokenTypeAccess,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS512, claims)
+	signed, err := token.SignedString([]byte(secret))
+	if err != nil {
+		t.Fatalf("Failed to sign HS512 token: %v", err)
+	}
+
+	if _, err := authService.ValidateToken(signed); err != ErrInvalidToken {
+		t.Errorf("Expected ErrInvalidToken for HS512 token, got %v", err)
+	}
+}
+
+func TestAuthService_ValidateToken_RejectsRefreshType(t *testing.T) {
+	mockService := newMockUserService()
+	mockService.users["user1"] = &User{ID: "user1", Email: "test@example.com", Name: "Test"}
+
+	authService := NewAuthService("test-secret-key-that-is-long-enough-for-jwt", mockService)
+	tokenPair, _ := authService.Login("test@example.com", "password")
+
+	if _, err := authService.ValidateAccessToken(tokenPair.RefreshToken); err != ErrInvalidToken {
+		t.Errorf("Expected ErrInvalidToken when using refresh token as access, got %v", err)
 	}
 }
 

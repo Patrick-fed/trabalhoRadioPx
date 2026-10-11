@@ -167,3 +167,38 @@ func TestUserService_ChangePassword(t *testing.T) {
 		t.Errorf("New password should work")
 	}
 }
+
+func TestUserService_ChangePassword_TooShort(t *testing.T) {
+	service := NewUserService()
+
+	user, _ := service.CreateUser(&CreateUserRequest{
+		Email:    "test@example.com",
+		Password: "password123",
+		Name:     "Test User",
+	})
+
+	err := service.ChangePassword(user.ID, "password123", "short")
+	if err != ErrPasswordTooShort {
+		t.Errorf("Expected ErrPasswordTooShort, got %v", err)
+	}
+
+	// The old password must remain valid after a rejected change.
+	if _, err := service.Authenticate("test@example.com", "password123"); err != nil {
+		t.Errorf("Old password should still work after rejected change, got %v", err)
+	}
+}
+
+func TestUserService_ChangePassword_WrongOldPassword(t *testing.T) {
+	service := NewUserService()
+
+	user, _ := service.CreateUser(&CreateUserRequest{
+		Email:    "test@example.com",
+		Password: "password123",
+		Name:     "Test User",
+	})
+
+	err := service.ChangePassword(user.ID, "wrongpassword", "newpassword123")
+	if err != ErrInvalidCredentials {
+		t.Errorf("Expected ErrInvalidCredentials, got %v", err)
+	}
+}

@@ -73,7 +73,7 @@ func (s *AuthService) Login(email, password string) (*TokenPair, error) {
 
 func (s *AuthService) ValidateToken(tokenString string) (*Claims, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+		if token.Method.Alg() != jwt.SigningMethodHS256.Alg() {
 			return nil, ErrInvalidToken
 		}
 		return s.secretKey, nil

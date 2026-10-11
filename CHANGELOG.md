@@ -4,6 +4,89 @@ Este documento registra todas as alterações significativas do projeto.
 
 ---
 
+## 11/10/2026 - Endurecimento de segurança: correções de alta, média e baixa prioridade
+
+### Contexto
+
+Continuação da revisão do login (RF02) iniciada em 10/10. Os itens levantados em auditoria foram
+corrigidos em três lotes por prioridade, com a suíte de testes rodada ao fim de cada lote.
+
+### Alterações
+
+**Alta prioridade**
+
+- `internal/user/service.go` + `internal/user/handler.go` — `ChangePassword` agora rejeita senha vazia
+  (`ErrPasswordRequired`) e com menos de 8 caracteres (`ErrPasswordTooShort`), ambos mapeados para
+  `400` (antes a senha curta caía em `409` e o requisito de 8 caracteres não era aplicado na troca de
+  senha). Alinhado ao RF01/RF07.
+- `frontend/lib/features/profile/screens/profile_screen.dart` — validador da troca de senha passou de
+  6 para 8 caracteres, alinhado ao backend.
+- `backend/cmd/server/main.go` — **rate limit** de 10 req/min por IP aplicado a
+  `/api/v1/auth/register`, `/auth/login` e `/auth/refresh` (o `middleware.NewRateLimiter` já existia
+  mas nunca era usado).
+- `internal/middleware/ratelimit.go` — `getClientID` remove a porta via `net.SplitHostPort` (antes o
+  mesmo IP com portas efêmeras diferentes contava como clientes distintos, inutilizando o limite);
+  mensagem de `429` traduzida para PT-BR.
+
+**Média prioridade**
+
+- `cmd/server/main.go` — `handleLogin`/`handleRefresh` passam a tratar o erro de `ValidateToken`
+  (evita nil-deref de `claims`) respondendo `500 {"error":"Falha ao gerar token"}`.
+- `cmd/server/main.go` — novo `webSocketAuthMiddleware`: `/ws/audio/` agora exige
+  `?token=<access JWT>`, validado por `ValidateAccessToken`; o `user_id` é forçado ao ID do token
+  (impede spoofing por query string). Sem token/token inválido → `401`.
+- `frontend/lib/core/websocket/websocket_service.dart` — `connect` passou a exigir `token` e monta a
+  URI com `Uri.replace(queryParameters: ...)`.
+- `frontend/lib/features/auth/services/auth_service.dart` — novo `getValidToken()` (renova
+  silenciosamente se expirado); usado pela tela de voz.
+- `frontend/lib/features/voice/screens/voice_screen.dart` — obtém o token válido antes de conectar;
+  sem token, reagenda a reconexão.
+- `frontend/lib/features/profile/screens/profile_screen.dart` — botão "Excluir Conta" +
+  `_deleteAccount()` (diálogo de confirmação → `deleteAccount()` → `logout()`), tornando o endpoint
+  `DELETE /api/v1/user/profile` alcançável pela UI.
+
+**Baixa prioridade**
+
+- `internal/auth/service.go` — `ValidateToken` passou a exigir **exatamente** HS256
+  (`token.Method.Alg() != jwt.SigningMethodHS256.Alg()`), rejeitando HS384/HS512/none (antes aceitava
+  qualquer HMAC).
+- `frontend/lib/features/auth/services/auth_service.dart` — token malformado (sem `exp`
+  decodificável) não vale mais como sessão: `isLoggedIn()` faz logout e retorna `false`;
+  `getAuthHeaders()` trata como expirado e tenta renovar.
+- `cmd/server/main.go` — emite aviso no log quando `JWT_SECRET` não é definido (fallback dev inseguro).
+
+**Testes**
+
+- Backend: `internal/user/service_test.go` + `handler_test.go` (validação da troca de senha),
+  `internal/middleware/ratelimit_test.go` (novo), `internal/auth/service_test.go` (HS256 e tipo de
+  token), `cmd/server/main_test.go` (3 casos do `webSocketAuthMiddleware`, incluindo resistência a
+  spoofing do `user_id`).
+- Frontend: `test/auth_service_test.dart` (novo, 6 casos) e `test/login_screen_test.dart` (novo, 3
+  casos).
+
+### Motivo
+
+Execução das correções apontadas pela auditoria, por prioridade, com verificação a cada lote.
+
+### Verificação
+
+- `go build ./...` + `go vet ./...` + `go test ./...` verdes.
+- `flutter analyze`: **15 issues — os mesmos do baseline, zero novos** (o `_deleteAccount` gerou um
+  `use_build_context_synchronously` que foi corrigido com guarda `mounted`).
+- `flutter test`: **40/40** (era 31/31).
+
+### Notas e pendências
+
+- **Mudança de protocolo do WebSocket**: `/ws/audio` agora exige `?token=`. APKs compilados antes
+  desta mudança deixam de conectar até serem recompilados — **validar em campo**.
+- **Exclusão de conta** não consta em RF explícito (RF07 lista visualizar/editar/alterar senha); a UI
+  e o endpoint foram expostos realizando a intenção já registrada no `PROJECT_STATE`. Reavaliar se
+  deve virar RF próprio.
+- **IP embutido no APK** (Problemas Conhecidos nº 4) segue como decisão de configuração pendente —
+  não é bug de código.
+
+---
+
 ## 10/10/2026 - Revisão do login: consolidação JWT, refresh token ativo e correção de bugs
 
 ### Contexto

@@ -20,16 +20,22 @@ class WebSocketService {
   Future<void> connect({
     required String channelId,
     required String userId,
+    required String token,
   }) async {
     if (_isConnected) {
       await disconnect();
     }
 
     _currentChannelId = channelId;
-    final url =
-        '${AppConfig.wsBaseUrl}/ws/audio?channel=$channelId&user_id=$userId';
+    final uri = Uri.parse('${AppConfig.wsBaseUrl}/ws/audio').replace(
+      queryParameters: {
+        'channel': channelId,
+        'user_id': userId,
+        'token': token,
+      },
+    );
 
-    final channel = WebSocketChannel.connect(Uri.parse(url));
+    final channel = WebSocketChannel.connect(uri);
 
     try {
       await channel.ready.timeout(apiTimeout);

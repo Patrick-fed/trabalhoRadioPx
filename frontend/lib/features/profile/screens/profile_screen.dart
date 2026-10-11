@@ -281,6 +281,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 side: const BorderSide(color: Colors.red),
               ),
             ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _deleteAccount,
+              icon: const Icon(Icons.delete_forever, color: Colors.red),
+              label: const Text(
+                'Excluir Conta',
+                style: TextStyle(color: Colors.red),
+              ),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                side: const BorderSide(color: Colors.red),
+              ),
+            ),
           ],
         ),
       ),
@@ -335,6 +348,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (confirmed == true) {
       await _authService.logout();
+    }
+  }
+
+  Future<void> _deleteAccount() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Excluir conta'),
+        content: const Text(
+          'Tem certeza que deseja excluir sua conta? Esta ação não pode ser desfeita.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+    if (!mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await _profileService.deleteAccount();
+      await _authService.logout();
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Erro ao excluir conta: ${friendlyError(e)}'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 }
@@ -555,8 +606,8 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
                     if (value == null || value.isEmpty) {
                       return 'Por favor, insira a nova senha';
                     }
-                    if (value.length < 6) {
-                      return 'A senha deve ter pelo menos 6 caracteres';
+                    if (value.length < 8) {
+                      return 'A senha deve ter pelo menos 8 caracteres';
                     }
                     return null;
                   },

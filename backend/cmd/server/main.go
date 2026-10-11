@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/radiopx/backend/internal/auth"
 	"github.com/radiopx/backend/internal/channel"
@@ -79,6 +80,7 @@ func main() {
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
 		secret = "dev-secret-change-in-production"
+		log.Println("WARNING: JWT_SECRET is not set; using an insecure development secret")
 	}
 
 	userService := user.NewUserService()
@@ -121,15 +123,19 @@ func setupRoutes(
 ) {
 	http.HandleFunc("/health", healthHandler)
 
-	http.HandleFunc("/api/v1/auth/register", func(w http.ResponseWriter, r *http.Request) {
+	authLimiter := middleware.NewRateLimiter(10, time.Minute)
+	authLimiter.StartCleanupRoutine()
+	rateLimited := middleware.RateLimitMiddleware(authLimiter)
+
+	http.Handle("/api/v1/auth/register", rateLimited(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handleRegister(w, r, userService, authService)
-	})
-	http.HandleFunc("/api/v1/auth/login", func(w http.ResponseWriter, r *http.Request) {
+	})))
+	http.Handle("/api/v1/auth/login", rateLimited(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handleLogin(w, r, authService)
-	})
-	http.HandleFunc("/api/v1/auth/refresh", func(w http.ResponseWriter, r *http.Request) {
+	})))
+	http.Handle("/api/v1/auth/refresh", rateLimited(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handleRefresh(w, r, authService)
-	})
+	})))
 
 	protected := http.NewServeMux()
 	protected.HandleFunc("/api/v1/channels", func(w http.ResponseWriter, r *http.Request) {
@@ -217,8 +223,26 @@ func setupRoutes(
 		fmt.Fprintf(w, `{"message":"Location updated"}`)
 	})
 
-	http.HandleFunc("/ws/audio/", func(w http.ResponseWriter, r *http.Request) {
-		voiceHandler.HandleWebSocket(w, r)
+	http.Handle("/ws/audio/", webSocketAuthMiddleware(authService, http.HandlerFunc(voiceHandler.HandleWebSocket)))
+}
+
+// webSocketAuthMiddleware authenticates the audio WebSocket handshake using the
+// access token passed as the "token" query parameter. The user ID comes from the
+// token, so a client cannot spoof the "user_id" query parameter.
+func webSocketAuthMiddleware(validator middleware.TokenValidator, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token := r.URL.Query().Get("token")
+		userID, err := validator.ValidateAccessToken(token)
+		if err != nil || userID == "" {
+			http.Error(w, `{"error":"Não autorizado"}`, http.StatusUnauthorized)
+			return
+		}
+
+		q := r.URL.Query()
+		q.Set("user_id", userID)
+		r.URL.RawQuery = q.Encode()
+
+		next.ServeHTTP(w, r)
 	})
 }
 
@@ -301,7 +325,11 @@ func handleLogin(w http.ResponseWriter, r *http.Request, authService *auth.AuthS
 		return
 	}
 
-	claims, _ := authService.ValidateToken(tokenPair.AccessToken)
+	claims, err := authService.ValidateToken(tokenPair.AccessToken)
+	if err != nil {
+		http.Error(w, `{"error":"Falha ao gerar token"}`, http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -336,7 +364,11 @@ func handleRefresh(w http.ResponseWriter, r *http.Request, authService *auth.Aut
 		return
 	}
 
-	claims, _ := authService.ValidateToken(tokenPair.AccessToken)
+	claims, err := authService.ValidateToken(tokenPair.AccessToken)
+	if err != nil {
+		http.Error(w, `{"error":"Falha ao gerar token"}`, http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

@@ -45,7 +45,7 @@ O sistema deve permitir transmissão de áudio via botão PTT:
 
 **Critérios de Aceitação:**
 - Apenas um usuário pode falar por vez
-- Transmissão é feita via WebSocket
+- Transmissão é feita via WebSocket autenticado por JWT (access token)
 - Latência de áudio < 500ms
 - Indicação visual de canal ocupado
 
@@ -179,11 +179,14 @@ O sistema deve ordenar áudios:
 - Autenticação JWT
 - Criptografia em trânsito (TLS)
 - Controle de acesso via Casbin
+- Rate limiting (10 req/min por IP) nos endpoints de autenticação (register/login/refresh)
+- Streaming de áudio via WebSocket autenticado por JWT, com identidade derivada do token
 
 **Critérios de Verificação:**
 - Testes de penetração
 - Auditoria de autenticação
 - Verificação de TLS em produção
+- Excesso de requisições de autenticação retorna `429`
 
 ---
 

@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -86,7 +87,7 @@ func RateLimitMiddleware(limiter *RateLimiter) func(http.Handler) http.Handler {
 				w.Header().Set("Content-Type", "application/json")
 				w.Header().Set("Retry-After", "60")
 				w.WriteHeader(http.StatusTooManyRequests)
-				w.Write([]byte(`{"error":"Rate limit exceeded. Please try again later."}`))
+				w.Write([]byte(`{"error":"Muitas tentativas. Tente novamente mais tarde."}`))
 				return
 			}
 
@@ -102,6 +103,9 @@ func getClientID(r *http.Request) string {
 	}
 	if ip == "" {
 		ip = r.RemoteAddr
+	}
+	if host, _, err := net.SplitHostPort(ip); err == nil {
+		return host
 	}
 	return ip
 }

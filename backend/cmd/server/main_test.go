@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/radiopx/backend/internal/auth"
@@ -187,5 +188,69 @@ func TestHandleRefresh_WithRefreshToken(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("Expected 200, got %d (body: %s)", rec.Code, rec.Body.String())
+	}
+}
+
+func TestWebSocketAuthMiddleware_RejectsMissingToken(t *testing.T) {
+	_, authService := newTestAuthEnv()
+
+	reached := false
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached = true
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/ws/audio/?channel=c1&user_id=spoofed", nil)
+	webSocketAuthMiddleware(authService, next).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("Expected 401 without token, got %d", rec.Code)
+	}
+	if reached {
+		t.Error("Next handler must not run without a valid token")
+	}
+}
+
+func TestWebSocketAuthMiddleware_RejectsInvalidToken(t *testing.T) {
+	_, authService := newTestAuthEnv()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/ws/audio/?channel=c1&token=not-a-token", nil)
+	webSocketAuthMiddleware(authService, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("Expected 401 for invalid token, got %d", rec.Code)
+	}
+}
+
+func TestWebSocketAuthMiddleware_UsesTokenUserID(t *testing.T) {
+	userService, authService := newTestAuthEnv()
+	body := registerAndDecode(t, userService, authService, "ws@example.com", "password123", "WS User")
+
+	token, _ := body["token"].(string)
+	userMap, _ := body["user"].(map[string]any)
+	wantID, _ := userMap["id"].(string)
+	if token == "" || wantID == "" {
+		t.Fatal("Expected token and user id from register")
+	}
+
+	var gotUserID string
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUserID = r.URL.Query().Get("user_id")
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/ws/audio/?channel=c1&user_id=spoofed&token="+url.QueryEscape(token),
+		nil,
+	)
+	webSocketAuthMiddleware(authService, next).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected auth to pass, got %d (body: %s)", rec.Code, rec.Body.String())
+	}
+	if gotUserID != wantID {
+		t.Errorf("Expected user_id from token %q, got %q", wantID, gotUserID)
 	}
 }

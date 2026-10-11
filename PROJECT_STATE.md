@@ -6,11 +6,11 @@ Este documento registra o estado atual do projeto para facilitar a continuidade 
 
 ## Fase
 
-**Desenvolvimento - Protótipo Funcional + APK Android (10/10/2026 - revisão do login)**
+**Desenvolvimento - Protótipo Funcional + APK Android (11/10/2026 - endurecimento de segurança)**
 
-Em 10/10/2026 o fluxo de login (RF02) foi auditado e endurecido: JWT consolidado em fonte única
-(auth service + middleware injetado), refresh token passou a ser usado de verdade, e-mail
-normalizado, validações em PT-BR, senha mínima 8 e correção do bug que impedia excluir a conta.
+Em 11/10/2026 foram aplicadas as correções de alta/média/baixa prioridade da auditoria do login:
+validação de senha na troca, rate limit nos endpoints de auth, WebSocket autenticado por JWT, UI de
+exclusão de conta, exigência de HS256, tratamento de token malformado e aviso de `JWT_SECRET` de dev.
 
 ---
 
@@ -103,6 +103,41 @@ normalizado, validações em PT-BR, senha mínima 8 e correção do bug que impe
 ---
 
 ## Última Alteração
+
+**11/10/2026 - Endurecimento de segurança: correções de alta, média e baixa prioridade**
+
+**Data**: 11/10/2026
+
+**Descrição**:
+- **Alta**: `ChangePassword` valida senha vazia/mínima de 8 (400, alinhado a RF01/RF07) e o validador
+  da UI passou de 6 para 8; `middleware.NewRateLimiter(10/min)` (antes código morto) agora envolve
+  `/auth/register`, `/auth/login` e `/auth/refresh`, com `getClientID` removendo a porta via
+  `net.SplitHostPort` e mensagem de 429 em PT-BR
+- **Média**: `handleLogin`/`handleRefresh` tratam erro de `ValidateToken` (fim do nil-deref de
+  `claims`); `/ws/audio/` ganhou `webSocketAuthMiddleware` (exige `?token=<access JWT>`, força o
+  `user_id` ao ID do token — anti-spoofing); o frontend envia o token (`getValidToken()` +
+  `WebSocketService.connect(token)`); botão "Excluir Conta" (`_deleteAccount`) torna o
+  `DELETE /api/v1/user/profile` alcançável
+- **Baixa**: `ValidateToken` exige **exatamente** HS256 (rejeita HS384/HS512/none); token malformado
+  não vale mais como sessão (`isLoggedIn` desloga, `getAuthHeaders` trata como expirado); `main.go`
+  avisa quando `JWT_SECRET` cai no fallback de dev
+- **Testes**: backend — `user/service_test.go`, `user/handler_test.go`,
+  `middleware/ratelimit_test.go` (novo), `auth/service_test.go`, `cmd/server/main_test.go` (3 casos
+  do WS auth); frontend — `test/auth_service_test.dart` (novo, 6) e `test/login_screen_test.dart`
+  (novo, 3)
+
+**Verificação**:
+- `go build ./...` + `go vet ./...` + `go test ./...` verdes
+- `flutter analyze`: 15 issues (baseline, zero novos) · `flutter test`: **40/40** (era 31/31)
+- Detalhes completos em `CHANGELOG.md`
+
+**Pendências abertas**:
+- **Protocolo do WebSocket mudou** (`/ws/audio?token=...`): APKs anteriores precisam ser
+  recompilados e o fluxo validado em campo
+- **Exclusão de conta** fora de RF explícito — decidir se vira requisito próprio
+- **IP no APK** (Problema Conhecido nº 4) permanece como decisão de configuração pendente
+
+---
 
 **10/10/2026 - Revisão do login: consolidação JWT, refresh token ativo e correção de bugs**
 
@@ -270,6 +305,7 @@ normalizado, validações em PT-BR, senha mínima 8 e correção do bug que impe
 5. **Validação em campo pendente do timeout/reconexão** — a detecção de falha de handshake do WebSocket foi conferida na fonte do `web_socket_channel 2.4.5` e no código, mas não em aparelho: com o backend parado, entrar num canal deve exibir a mensagem de erro em ~10s e a tela de voz deve passar por 5 tentativas com backoff até o botão "Tentar novamente". Em web esse comportamento não é garantido (o `ready` lá é stub).
 6. **Backend não usa PostgreSQL — tudo é em memória** — `internal/user/service.go`, `internal/channel/service.go` e `internal/location/service.go` guardam os dados em `map` protegidos por `sync.RWMutex`; não existe `database/sql`, pgx ou gorm em lugar nenhum do código. Isso **diverge** de `docs/decisoes.md` (DEC-001) e `docs/banco-de-dados.md`, que definem PostgreSQL 14+ como banco principal. Consequência prática: reiniciar o backend zera usuários, canais e localizações, então as contas de teste precisam ser recriadas a cada reinício. Correção exige implementar a persistência já prevista na documentação.
 7. **`setState` logo após `Navigator.pop` no salvamento de perfil** — em `profile_screen.dart`, o `finally { setState(...) }` de `_saveProfile` executa logo após o `pop` do caminho de sucesso. Hoje funciona porque a bottom sheet ainda está na animação de saída, mas é frágil: se a animação mudar, pode virar `setState() called after dispose()`.
+8. **WebSocket agora exige JWT e quebra clientes antigos** — desde 11/10/2026 o endpoint `/ws/audio/` exige `?token=<access JWT>` (validado por `webSocketAuthMiddleware`, com o `user_id` forçado ao ID do token). APKs compilados antes desta mudança deixam de conectar até serem recompilados. Mitigação: `AuthService.getValidToken()` renova o token antes de conectar. Validação em campo pendente.
 
 ---
 
@@ -347,9 +383,9 @@ normalizado, validações em PT-BR, senha mínima 8 e correção do bug que impe
 
 ## Última Atualização
 
-**Data**: 10/10/2026
+**Data**: 11/10/2026
 
-**Hora**: 2026-10-10
+**Hora**: 2026-10-11
 
 **Por**: OpenCode (assistente AI)
 

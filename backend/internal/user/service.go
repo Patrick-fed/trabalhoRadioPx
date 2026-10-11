@@ -191,6 +191,13 @@ func (s *UserService) ChangePassword(userID, oldPassword, newPassword string) er
 		return ErrInvalidCredentials
 	}
 
+	if newPassword == "" {
+		return ErrPasswordRequired
+	}
+	if len(newPassword) < minPasswordLength {
+		return ErrPasswordTooShort
+	}
+
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
 	if err != nil {
 		return err

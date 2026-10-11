@@ -81,3 +81,57 @@ func TestUserHandler_HandleUpdateUserProfile_NotFound(t *testing.T) {
 		t.Errorf("Expected status 404, got %d", rec.Code)
 	}
 }
+
+func TestUserHandler_HandleChangePassword_TooShort(t *testing.T) {
+	service := NewUserService()
+	handler := NewUserHandler(service)
+
+	created, err := service.CreateUser(&CreateUserRequest{
+		Email:    "change@example.com",
+		Password: "password123",
+		Name:     "Change User",
+	})
+	if err != nil {
+		t.Fatalf("CreateUser failed: %v", err)
+	}
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/user/change-password",
+		strings.NewReader(`{"old_password":"password123","new_password":"short"}`),
+	)
+	rec := httptest.NewRecorder()
+
+	handler.HandleChangePasswordByUserID(rec, req, created.ID)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("Expected status 400 for short new password, got %d (body: %s)", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUserHandler_HandleChangePassword_WrongOldPassword(t *testing.T) {
+	service := NewUserService()
+	handler := NewUserHandler(service)
+
+	created, err := service.CreateUser(&CreateUserRequest{
+		Email:    "change2@example.com",
+		Password: "password123",
+		Name:     "Change User",
+	})
+	if err != nil {
+		t.Fatalf("CreateUser failed: %v", err)
+	}
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/user/change-password",
+		strings.NewReader(`{"old_password":"wrongpassword","new_password":"newpassword123"}`),
+	)
+	rec := httptest.NewRecorder()
+
+	handler.HandleChangePasswordByUserID(rec, req, created.ID)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("Expected status 401 for wrong old password, got %d (body: %s)", rec.Code, rec.Body.String())
+	}
+}

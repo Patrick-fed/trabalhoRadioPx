@@ -79,8 +79,11 @@ func (h *UserHandler) HandleChangePasswordByUserID(w http.ResponseWriter, r *htt
 
 	if err := h.userService.ChangePassword(userID, req.OldPassword, req.NewPassword); err != nil {
 		status := http.StatusConflict
-		if err == ErrInvalidCredentials {
+		switch err {
+		case ErrInvalidCredentials:
 			status = http.StatusUnauthorized
+		case ErrPasswordRequired, ErrPasswordTooShort:
+			status = http.StatusBadRequest
 		}
 		http.Error(w, `{"error":"`+err.Error()+`"}`, status)
 		return

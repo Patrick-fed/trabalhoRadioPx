@@ -82,10 +82,17 @@ class _VoiceScreenState extends State<VoiceScreen> {
     _wsSubscription?.cancel();
     await _webSocketService.disconnect();
 
+    final token = await _authService.getValidToken();
+    if (token == null) {
+      _scheduleReconnect();
+      return;
+    }
+
     try {
       await _webSocketService.connect(
         channelId: widget.channelId,
         userId: _userId ?? 'anonymous',
+        token: token,
       );
     } catch (_) {
       if (mounted) _scheduleReconnect();

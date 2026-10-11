@@ -100,6 +100,11 @@ class AuthService {
     final token = prefs.getString(_tokenKey);
 
     if (token == null) return false;
+    if (jwtExpiry(token) == null) {
+      // Corrupted or opaque token in storage: not a usable session.
+      await logout();
+      return false;
+    }
     if (!tokenIsExpired(token)) return true;
 
     // Access token expired: try the silent renewal before giving up.
@@ -171,9 +176,10 @@ class AuthService {
     var token = prefs.getString(_tokenKey);
     if (token == null) return {};
 
-    if (tokenIsExpired(token)) {
-      // Expired access token on a real API call: try to renew once. On failure
-      // refreshToken() logs out, so no 401 wall of errors reaches the UI.
+    if (jwtExpiry(token) == null || tokenIsExpired(token)) {
+      // Expired (or corrupted) access token on a real API call: try to renew
+      // once. On failure refreshToken() logs out, so no 401 wall of errors
+      // reaches the UI.
       final user = await refreshToken();
       if (user == null) return {};
       token = prefs.getString(_tokenKey);
@@ -183,5 +189,16 @@ class AuthService {
     return {
       'Authorization': 'Bearer $token',
     };
+  }
+
+  /// Returns a non-expired access token, renewing it silently when needed.
+  /// Returns null when there is no session or the renewal fails.
+  Future<String?> getValidToken() async {
+    final headers = await getAuthHeaders();
+    final authorization = headers['Authorization'];
+    if (authorization == null || !authorization.startsWith('Bearer ')) {
+      return null;
+    }
+    return authorization.substring('Bearer '.length);
   }
 }
