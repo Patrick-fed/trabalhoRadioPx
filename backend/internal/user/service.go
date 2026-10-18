@@ -2,12 +2,12 @@ package user
 
 import (
 	"errors"
-	"fmt"
 	"net/mail"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -250,5 +250,5 @@ func (s *UserService) ListUsers() []*User {
 }
 
 func generateUserID() string {
-	return fmt.Sprintf("%d", time.Now().UnixNano())
+	return uuid.NewString()
 }

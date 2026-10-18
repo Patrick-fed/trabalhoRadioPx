@@ -2,6 +2,8 @@ package user
 
 import (
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 func TestUserService_CreateUser(t *testing.T) {
@@ -200,5 +202,34 @@ func TestUserService_ChangePassword_WrongOldPassword(t *testing.T) {
 	err := service.ChangePassword(user.ID, "wrongpassword", "newpassword123")
 	if err != ErrInvalidCredentials {
 		t.Errorf("Expected ErrInvalidCredentials, got %v", err)
+	}
+}
+
+func TestUserService_CreateUser_GeneratesUniqueUUIDs(t *testing.T) {
+	service := NewUserService()
+
+	first, err := service.CreateUser(&CreateUserRequest{
+		Email:    "first@example.com",
+		Password: "password123",
+		Name:     "First",
+	})
+	if err != nil {
+		t.Fatalf("CreateUser first failed: %v", err)
+	}
+
+	second, err := service.CreateUser(&CreateUserRequest{
+		Email:    "second@example.com",
+		Password: "password123",
+		Name:     "Second",
+	})
+	if err != nil {
+		t.Fatalf("CreateUser second failed: %v", err)
+	}
+
+	if _, err := uuid.Parse(first.ID); err != nil {
+		t.Errorf("Expected a valid UUID, got %q: %v", first.ID, err)
+	}
+	if first.ID == second.ID {
+		t.Errorf("Expected distinct user IDs, both were %q", first.ID)
 	}
 }

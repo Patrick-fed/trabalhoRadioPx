@@ -12,6 +12,11 @@ description: "Task list for RadioPX feature implementation"
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
+> **Nota (13/10/2026)**: os checkboxes abaixo (`[x]`) são **otimistas**. Após auditoria do código,
+> alguns itens marcados como concluídos **não estão ligados ao fluxo real**: T045–T051 (buffer/replay
+> de US4 são código morto), T049/T050 (referenciam arquivos que não existem) e a parte de OAuth de
+> T052–T061. Ver `PROJECT_STATE.md` → *Lacunas / Aderência aos Requisitos*.
+
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: Can run in parallel (different files, no dependencies)

@@ -41,7 +41,7 @@ func NewAudioPacket(userID, channelID string, audio []byte, isPTT bool) *AudioPa
 		Audio:     audio,
 		IsPTT:     isPTT,
 		Timestamp: time.Now(),
-		Codec:     "opus",
+		Codec:     "pcm16",
 	}
 }
 

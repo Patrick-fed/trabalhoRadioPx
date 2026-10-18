@@ -110,7 +110,11 @@ class AuthService {
     // Access token expired: try the silent renewal before giving up.
     if (_refreshingSession) return false;
     final savedRefreshToken = prefs.getString(_refreshTokenKey);
-    if (savedRefreshToken == null) return false;
+    if (savedRefreshToken == null) {
+      // Expired session that cannot be renewed: drop the stale token/user.
+      await logout();
+      return false;
+    }
 
     _refreshingSession = true;
     try {

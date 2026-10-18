@@ -96,16 +96,13 @@ func RateLimitMiddleware(limiter *RateLimiter) func(http.Handler) http.Handler {
 	}
 }
 
+// getClientID returns the IP of the actual connection. Forwarding headers
+// (X-Forwarded-For/X-Real-IP) are intentionally ignored: the server sits
+// directly on the network, so trusting client-supplied headers would let an
+// attacker rotate them and bypass the rate limit entirely.
 func getClientID(r *http.Request) string {
-	ip := r.Header.Get("X-Forwarded-For")
-	if ip == "" {
-		ip = r.Header.Get("X-Real-IP")
-	}
-	if ip == "" {
-		ip = r.RemoteAddr
-	}
-	if host, _, err := net.SplitHostPort(ip); err == nil {
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
 		return host
 	}
-	return ip
+	return r.RemoteAddr
 }

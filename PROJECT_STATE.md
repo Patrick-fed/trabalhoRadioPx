@@ -6,15 +6,82 @@ Este documento registra o estado atual do projeto para facilitar a continuidade 
 
 ## Fase
 
-**Desenvolvimento - Protótipo Funcional + APK Android (11/10/2026 - endurecimento de segurança)**
+**Desenvolvimento - Protótipo Funcional + APK Android (11/10/2026 - segunda revisão do login)**
 
-Em 11/10/2026 foram aplicadas as correções de alta/média/baixa prioridade da auditoria do login:
-validação de senha na troca, rate limit nos endpoints de auth, WebSocket autenticado por JWT, UI de
-exclusão de conta, exigência de HS256, tratamento de token malformado e aviso de `JWT_SECRET` de dev.
+Em 11/10/2026 o login passou por nova auditoria: corrigido um bypass do rate limit via headers de
+encaminhamento, IDs de usuário passaram a ser UUIDs, sessão expirada sem refresh é limpa e a detecção
+de e-mail duplicado no cadastro voltou a funcionar.
+
+> **Atenção (13/10/2026)**: as listas de requisitos e o quadro de progresso abaixo **não refletem**
+> o estado real do código. O mapeamento honesto de lacunas e de escopo está na seção
+> [Lacunas / Aderência aos Requisitos](#lacunas--aderência-aos-requisitos).
+
+---
+
+## Lacunas / Aderência aos Requisitos
+
+> **Fonte única de verdade** para o que ainda falta. Atualizado em 13/10/2026 após auditoria do
+> código. As seções de requisitos/progresso deste documento são anteriores a esta auditoria.
+
+### Lacunas dentro do escopo v1 (a corrigir)
+
+- **RF03 — "apenas um usuário fala por vez" não é aplicado no fluxo real.**
+  `VoiceService.StartTransmission`/`StopTransmission` (`backend/internal/voice/service.go:34,59`)
+  existem mas **nunca são chamados**; `HandleStartTransmission`/`HandleStopTransmission`
+  (`backend/internal/voice/handler.go:61,86`) **não estão registrados** em `main.go`. O caminho do
+  WebSocket apenas repassa o áudio (`backend/pkg/websocket/client.go:137`), sem bloquear um segundo
+  transmissor.
+
+- **RF06 / RNF04 — buffer de 30s e replay são código morto.**
+  `backend/internal/voice/buffer_service.go` e `buffer_manager.go` só são instanciados em testes
+  (`buffer_service_test.go`); nada disso está ligado ao WebSocket. No frontend,
+  `frontend/lib/features/voice/services/audio_queue.dart` e
+  `frontend/lib/features/voice/models/message_buffer_model.dart` **não são importados** em lugar
+  nenhum.
+
+- **Codec — divergência de documentação.** O pacote declara `Codec: "opus"`
+  (`backend/internal/voice/websocket.go:44`), mas o áudio trafegado é **PCM16 cru** em base64, sem
+  compressão. Decidir se vira lacuna ou se é aceitável para v1.
+
+- **Distância do canal nunca é serializada.** `Channel` não tem campo `distance` e
+  `GetNearbyChannels` usa a distância só para ordenar (`backend/internal/channel/model.go`). Ver
+  [Problemas Conhecidos](#problemas-conhecidos) nº 1.
+
+- **Testes de integração/E2E ausentes.** Só há testes unitários (backend: 8 arquivos `_test.go`;
+  frontend: 41 casos). Não existe teste do fluxo de áudio ponta-a-ponta.
+
+### Trabalho futuro — fora de escopo v1 (decisão explícita, 13/10/2026)
+
+Estes itens **não** serão implementados na v1. O protótipo roda em memória e sem eles:
+
+- **RF02 — Google OAuth.** `CreateOAuthUser` existe, mas não há integração Google nem endpoint
+  OAuth. (Ver tambem DEC-002 e DEC-011 em `docs/decisoes.md`.)
+- **RNF05 — Casbin (controle de acesso por papéis).** Não implementado.
+- **RNF05 — TLS.** `main.go` usa `ListenAndServe` HTTP puro (`backend/cmd/server/main.go:112`).
+- **DEC-001 / FR-013 — PostgreSQL.** Nenhum driver no `go.mod`; `backend/migrations/001_initial.sql`
+  nunca é aplicado. Persistência é em `map` + `RWMutex`.
+- **Deploy e monitoramento.** Sem `Dockerfile`/`docker-compose`, sem métricas.
+
+### Débito técnico (código morto, sem chamadas)
+
+- `backend/internal/user/handler.go` — `HandleUpdateUser`.
+- `backend/internal/middleware/cors.go` e `logging.go` (o `main.go` usa `github.com/rs/cors`).
+- `frontend/lib/features/channels/screens/channel_detail_screen.dart` (nunca é navegada).
+
+### Documentação desatualizada
+
+- `docs/arquitetura.md` → tabela "Status de Implementação" marca tudo ✅.
+- `docs/requisitos.md` → marca todos os RF/RNF como definidos, sem status de implementação.
+- `specs/001-px-radio-simulation/tasks.md` → T001–T073 marcados `[x]`, mas T045–T051
+  (buffer/replay) e a parte de OAuth de T052–T061 não foram entregues.
+- `README.md` → seção "Status Atual" ainda diz "Fase: Inicialização".
 
 ---
 
 ## Requisitos Concluídos
+
+> Lista histórica. "Definido" significa que o requisito está **especificado**, não necessariamente
+> implementado. Ver [Lacunas / Aderência aos Requisitos](#lacunas--aderência-aos-requisitos).
 
 ### Requisitos Funcionais
 
@@ -103,6 +170,35 @@ exclusão de conta, exigência de HS256, tratamento de token malformado e aviso 
 ---
 
 ## Última Alteração
+
+**11/10/2026 - Segunda revisão do login: bypass do rate limit, UUIDs e limpeza de sessão**
+
+**Data**: 11/10/2026
+
+**Descrição**:
+- **Segurança**: `getClientID` (`internal/middleware/ratelimit.go`) passou a usar só `r.RemoteAddr` —
+  antes confiava em `X-Forwarded-For`/`X-Real-IP` sem proxy, permitindo rotacionar o header e burlar o
+  rate limit de login
+- **Backend**: `generateUserID()` (`internal/user/service.go`) trocou `time.Now().UnixNano()` por
+  `uuid.NewString()` (dependência `github.com/google/uuid` já presente), alinhando ao AGENTS.md
+- **Frontend**: `isLoggedIn()` faz `logout()` quando o access token expirou e não há refresh token
+  (remove token/usuário obsoletos); `register_screen` volta a reconhecer e-mail duplicado em PT-BR
+  (`'já está cadastrado'`), antes código morto
+- **Testes**: `ratelimit_test.go` (headers ignorados), `user/service_test.go` (UUID válido/distinto),
+  `auth_service_test.dart` (limpeza de storage)
+
+**Verificação**:
+- `go build ./...` + `go vet ./...` + `go test ./...` verdes
+- `flutter analyze`: 15 issues (baseline, zero novos) · `flutter test`: **41/41** (era 40/40)
+- Detalhes completos em `CHANGELOG.md`
+
+**Observações abertas**:
+- Limiter é compartilhado por register/login/refresh (10/min por IP) — aparelhos no mesmo NAT dividem
+  a cota
+- `Authenticate` ignora `IsActive` (usuário desativado ainda loga; não há fluxo de desativação)
+- `_refreshingSession` é por instância de `AuthService` (guard anti-loop não é global)
+
+---
 
 **11/10/2026 - Endurecimento de segurança: correções de alta, média e baixa prioridade**
 
@@ -378,6 +474,10 @@ exclusão de conta, exigência de HS256, tratamento de token malformado e aviso 
 | Phase 8: Profile | 4 | 4 | ✅ 100% |
 | Phase 9: Polish | 8 | 8 | ✅ 100% |
 | **Total** | **73** | **73** | **100%** |
+
+> ⚠️ Os percentuais acima são **históricos e otimistas**. Vários itens marcados como concluídos não
+> estão ligados ao fluxo real (ex.: fases 3 e 6). A avaliação correta está em
+> [Lacunas / Aderência aos Requisitos](#lacunas--aderência-aos-requisitos).
 
 ---
 

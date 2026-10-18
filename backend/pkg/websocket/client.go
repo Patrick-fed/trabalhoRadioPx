@@ -15,13 +15,21 @@ const (
 	maxMessageSize = 65536
 )
 
+type VoiceGuard interface {
+	StartTransmission(userID, channelID string) error
+	StopTransmission(userID, channelID string) error
+	CanTransmit(userID, channelID string) bool
+	IsChannelBusy(channelID string) bool
+}
+
 type Client struct {
-	hub    *Hub
-	conn   *websocket.Conn
-	send   chan Message
-	ID     string
-	UserID string
-	rooms  map[string]bool
+	hub        *Hub
+	conn       *websocket.Conn
+	send       chan Message
+	ID         string
+	UserID     string
+	rooms      map[string]bool
+	voiceGuard VoiceGuard
 }
 
 type ClientMessage struct {
@@ -31,12 +39,25 @@ type ClientMessage struct {
 
 func NewClient(hub *Hub, conn *websocket.Conn, userID string) *Client {
 	return &Client{
-		hub:    hub,
-		conn:   conn,
-		send:   make(chan Message, 256),
-		ID:     generateClientID(),
-		UserID: userID,
-		rooms:  make(map[string]bool),
+		hub:        hub,
+		conn:       conn,
+		send:       make(chan Message, 256),
+		ID:         generateClientID(),
+		UserID:     userID,
+		rooms:      make(map[string]bool),
+		voiceGuard: nil,
+	}
+}
+
+func NewClientWithGuard(hub *Hub, conn *websocket.Conn, userID string, guard VoiceGuard) *Client {
+	return &Client{
+		hub:        hub,
+		conn:       conn,
+		send:       make(chan Message, 256),
+		ID:         generateClientID(),
+		UserID:     userID,
+		rooms:      make(map[string]bool),
+		voiceGuard: guard,
 	}
 }
 
@@ -141,6 +162,14 @@ func (c *Client) handleMessage(msg ClientMessage) {
 			IsPTT  bool            `json:"is_ptt"`
 		}
 		if err := json.Unmarshal(msg.Payload, &payload); err == nil {
+			if c.voiceGuard != nil && payload.IsPTT {
+				if err := c.voiceGuard.StartTransmission(c.UserID, payload.Room); err != nil {
+					log.Printf("PTT start rejected for user %s in room %s: %v", c.UserID, payload.Room, err)
+					return
+				}
+			} else if c.voiceGuard != nil && !payload.IsPTT {
+				c.voiceGuard.StopTransmission(c.UserID, payload.Room)
+			}
 			audioPayload, _ := json.Marshal(map[string]interface{}{
 				"audio":    payload.Audio,
 				"is_ptt":   payload.IsPTT,

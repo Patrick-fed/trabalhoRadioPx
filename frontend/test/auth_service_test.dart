@@ -54,6 +54,20 @@ void main() {
 
       expect(await AuthService().isLoggedIn(), isFalse);
     });
+
+    test('clears stale storage for an expired token without a refresh token',
+        () async {
+      SharedPreferences.setMockInitialValues({
+        'auth_token': _jwt(exp: pastExp),
+        'user_data': '{"id":"user-1","email":"user@example.com"}',
+      });
+
+      expect(await AuthService().isLoggedIn(), isFalse);
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('auth_token'), isNull);
+      expect(prefs.getString('user_data'), isNull);
+    });
   });
 
   group('AuthService.getValidToken', () {

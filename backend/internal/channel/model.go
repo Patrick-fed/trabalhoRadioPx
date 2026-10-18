@@ -13,6 +13,7 @@ type Channel struct {
 	MaxUsers    int       `json:"max_users" db:"max_users"`
 	UserCount   int       `json:"user_count" db:"user_count"`
 	IsAvailable bool      `json:"is_available" db:"is_available"`
+	Distance    float64   `json:"distance,omitempty" db:"-"`
 	CreatedBy   string    `json:"created_by" db:"created_by"`
 	CreatedAt   time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`

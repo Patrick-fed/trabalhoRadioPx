@@ -4,6 +4,98 @@ Este documento registra todas as alterações significativas do projeto.
 
 ---
 
+## 13/10/2026 - Reconciliação docs × código: registro de lacunas e escopo da v1
+
+### Contexto
+
+Auditoria do código (backend Go + frontend Flutter) frente à documentação. O código é um **protótipo
+funcional em memória**, mas os docs marcavam 73/73 tarefas e todos os RF/RNF como concluídos. Nenhuma
+funcionalidade foi alterada nesta entrada — apenas registrada a divergência para correção futura.
+
+### Alterações (apenas documentação)
+
+- **`PROJECT_STATE.md`** — nova seção **Lacunas / Aderência aos Requisitos** (fonte única) listando:
+  lacunas dentro do escopo v1 (RF03 sem bloqueio de um falante por vez; RF06/RNF04 buffer e replay
+  como código morto; codec `opus` vs PCM16; distância não serializada; sem testes de integração),
+  **trabalho futuro fora de escopo v1** (PostgreSQL, Google OAuth, Casbin, TLS, deploy/monitoramento)
+  e débito técnico (código morto). Notas de alerta adicionadas em "Fase", "Requisitos Concluídos" e
+  na tabela "Progresso".
+- **`docs/requisitos.md`** — nota de status apontando para PROJECT_STATE.
+- **`docs/arquitetura.md`** — nota de que a tabela "Status de Implementação" é aspiracional.
+- **`docs/decisoes.md`** — nova **DEC-011** (escopo v1 em memória) com status de DEC-001/DEC-002.
+- **`specs/001-px-radio-simulation/tasks.md`** — nota sobre checkboxes otimistas (T045–T051, T049/T050,
+  parte OAuth de T052–T061).
+- **`README.md`** — nota de que "Status Atual" está desatualizado.
+
+### Motivo
+
+Evitar decisões erradas e defesa frágil do trabalho: a documentação superestimava o progresso em
+relação ao código real. Registrado a pedido do autor, que fará as correções depois.
+
+### Verificação
+
+- Somente arquivos de documentação (`.md`) foram alterados; nenhum código-fonte, teste ou dependência
+  foi tocado.
+
+---
+
+## 11/10/2026 - Segunda revisão do login: bypass do rate limit, UUIDs e limpeza de sessão
+
+### Contexto
+
+Nova auditoria do fluxo de login após o endurecimento da manhã. Foram encontrados e corrigidos
+quatro pontos, sendo um de segurança relevante.
+
+### Alterações
+
+**Backend**
+
+- `internal/middleware/ratelimit.go` — **correção de segurança**: `getClientID` passou a usar apenas
+  `r.RemoteAddr`. Antes ele confiava em `X-Forwarded-For`/`X-Real-IP` sem proxy confiável; como o
+  servidor Go não injeta esses headers e não há reverse proxy, um cliente podia enviar um valor
+  diferente a cada tentativa e **burlar totalmente o rate limit de login** (força bruta ilimitada).
+- `internal/user/service.go` — `generateUserID()` passou de `time.Now().UnixNano()` para
+  `uuid.NewString()` (`github.com/google/uuid`, dependência já presente). Alinha ao AGENTS.md
+  ("UUIDs são usados como chaves primárias"): IDs deixam de ser previsíveis/enumeráveis e elimina o
+  risco de colisão por resolução de relógio.
+
+**Frontend**
+
+- `lib/features/auth/services/auth_service.dart` — `isLoggedIn()`, no caso de access token expirado
+  **e** sem refresh token, agora executa `logout()` antes de retornar `false`, removendo token/usuário
+  obsoletos do storage (antes ficava um "usuário fantasma" em `getCurrentUser()`).
+- `lib/features/auth/screens/register_screen.dart` — a detecção de e-mail duplicado também casa
+  `'já está cadastrado'`. O backend responde em PT-BR desde 10/10, então o check antigo por
+  `'already exists'` era código morto e a mensagem amigável nunca aparecia.
+
+**Testes**
+
+- `internal/middleware/ratelimit_test.go` — novo `TestGetClientID_IgnoresForwardedHeaders` (headers de
+  encaminhamento não alteram o clientID).
+- `internal/user/service_test.go` — novo `TestUserService_CreateUser_GeneratesUniqueUUIDs` (ID é UUID
+  válido e distinto entre usuários).
+- `frontend/test/auth_service_test.dart` — novo caso: token expirado sem refresh limpa o storage.
+
+### Motivo
+
+Revisão solicitada do login para identificar novos bugs após o endurecimento anterior.
+
+### Verificação
+
+- `go build ./...` + `go vet ./...` + `go test ./...` verdes.
+- `flutter analyze`: **15 issues — os mesmos do baseline, zero novos**; `flutter test`: **41/41**
+  (era 40/40).
+
+### Pendências / observações
+
+- **Limiter compartilhado** (register+login+refresh, 10/min por IP): dois aparelhos atrás do mesmo NAT
+  dividem a cota. Mantido por ora; avaliar limiters separados se necessário.
+- **`Authenticate` ignora `IsActive`**: usuário desativado ainda loga (latente — não há fluxo de
+  desativação).
+- **`_refreshingSession` é por instância** de `AuthService`: o guard anti-loop não é global.
+
+---
+
 ## 11/10/2026 - Endurecimento de segurança: correções de alta, média e baixa prioridade
 
 ### Contexto

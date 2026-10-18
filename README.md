@@ -123,3 +123,7 @@ RadioPx/
 - **Backend**: ⏳ Pendente
 - **Frontend**: ⏳ Pendente
 - **Última atualização**: 08/09/2026
+
+> **Nota (13/10/2026)**: esta seção está desatualizada. Existe um protótipo funcional (backend Go em
+> memória + app Flutter + APK) e há lacunas conhecidas. Estado real e pendências em
+> `PROJECT_STATE.md` → *Lacunas / Aderência aos Requisitos*.

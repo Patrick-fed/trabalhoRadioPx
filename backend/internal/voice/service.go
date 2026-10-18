@@ -101,6 +101,21 @@ func (vs *VoiceService) GetCurrentSpeaker(channelID string) string {
 	return channel.CurrentSpeaker
 }
 
+func (vs *VoiceService) CanTransmit(userID, channelID string) bool {
+	vs.hub.mu.RLock()
+	defer vs.hub.mu.RUnlock()
+
+	channel, exists := vs.hub.channels[channelID]
+	if !exists {
+		return true
+	}
+
+	if !channel.IsTransmitting {
+		return true
+	}
+	return channel.CurrentSpeaker == userID
+}
+
 func (vs *VoiceService) GetChannelStatus(channelID string) *VoiceStatus {
 	vs.hub.mu.RLock()
 	defer vs.hub.mu.RUnlock()

@@ -48,7 +48,7 @@ func (vh *VoiceHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	client := ws.NewClient(vh.hub, conn, userID)
+	client := ws.NewClientWithGuard(vh.hub, conn, userID, vh.voiceService)
 	vh.hub.RegisterClient(client)
 	vh.hub.JoinRoom(client, channelID)
 

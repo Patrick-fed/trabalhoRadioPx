@@ -220,6 +220,7 @@ func (s *ChannelService) GetNearbyChannels(latitude, longitude, radiusKm float64
 
 		if distance <= radiusKm {
 			channelCopy := *channel
+			channelCopy.Distance = distance
 			nearbyChannels = append(nearbyChannels, &channelCopy)
 		}
 	}

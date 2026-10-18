@@ -232,7 +232,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (mounted) {
         setState(() {
           final text = friendlyError(e);
-          _error = text.contains('already exists')
+          _error = text.contains('already exists') ||
+                  text.contains('já está cadastrado')
               ? 'Este e-mail já está cadastrado. Faça login.'
               : text;
         });

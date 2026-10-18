@@ -15,6 +15,10 @@ Arquitetura monolítica modular com separação por responsabilidades. O sistema
 | Location | ✅ Completo | ✅ Completo | ✅ |
 | Profile | N/A | ✅ Completo | ✅ |
 
+> **Nota (13/10/2026)**: a tabela acima é aspiracional. O estado real — Voice parcial (sem bloqueio
+> de um falante por vez), Buffer de voz não conectado ao WebSocket, Location e Channels em memória —
+> está em `PROJECT_STATE.md` → *Lacunas / Aderência aos Requisitos*.
+
 ## Diagrama de Alto Nível
 
 ```

@@ -255,3 +255,29 @@ Este documento registra as decisões arquiteturais e técnicas importantes do pr
 - Atualização de localização a cada 30 segundos
 - Filtragem de canais por distância
 - Índices geográficos no banco
+
+---
+
+## DEC-011 — Escopo da v1: protótipo em memória
+
+**Data**: 13/10/2026
+
+**Decisão**: A v1 (protótipo funcional entregue para teste em campo) roda **em memória** e **não
+implementa** PostgreSQL, Google OAuth, Casbin nem TLS. Esses itens ficam como **trabalho futuro
+fora de escopo da v1**.
+
+**Motivo**:
+- Priorizar o fluxo principal (auth + PTT + canais + GPS + perfil) e a validação em campo com APK.
+- Reduzir escopo e dependências para o prazo do trabalho acadêmico.
+
+**Relação com decisões anteriores**:
+- **DEC-001 (PostgreSQL)**: decidido, mas **não implementado na v1**. Nenhum driver de banco no
+  `go.mod`; os dados vivem em `map` + `sync.RWMutex` e são zerados a cada reinício. A migração
+  `backend/migrations/001_initial.sql` existe mas não é aplicada.
+- **DEC-002 (JWT + OAuth)**: JWT **implementado** (access + refresh, HS256); **OAuth (Google) não**.
+- **RNF05 (Casbin/TLS)**: **não implementados** na v1 (só JWT, bcrypt e rate limiting).
+
+**Impacto**:
+- Divergência assumida entre `docs/arquitetura.md`, `docs/banco-de-dados.md` e o código.
+- O mapeamento consolidado das lacunas fica em `PROJECT_STATE.md` →
+  *Lacunas / Aderência aos Requisitos*.

@@ -71,3 +71,14 @@ func TestGetClientID_StripsPort(t *testing.T) {
 		t.Errorf("Expected host without port, got %q", got)
 	}
 }
+
+func TestGetClientID_IgnoresForwardedHeaders(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "10.0.0.5:43321"
+	req.Header.Set("X-Forwarded-For", "1.2.3.4")
+	req.Header.Set("X-Real-IP", "5.6.7.8")
+
+	if got := getClientID(req); got != "10.0.0.5" {
+		t.Errorf("Forwarding headers must not override the connection IP, got %q", got)
+	}
+}
