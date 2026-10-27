@@ -4,12 +4,13 @@
 
 Este documento lista todos os requisitos funcionais e não funcionais do sistema RadioPX.
 
-> **Status de implementação (13/10/2026)**: este documento define **o que** o sistema deve fazer.
-> Nem todos os RF/RNF abaixo estão totalmente implementados na v1 (protótipo em memória).
+> **Status de implementação (27/10/2026)**: este documento define **o que** o sistema deve fazer.
+> Nem todos os RF/RNF abaixo estão totalmente implementados na v1.
 > O mapeamento de lacunas e de escopo fica em `PROJECT_STATE.md` →
 > *Lacunas / Aderência aos Requisitos*. Em especial: RF02 (OAuth é trabalho futuro),
-> RF03 (um falante por vez não aplicado), RF06 (buffer/replay não conectado) e RNF05 (Casbin/TLS
-> fora de escopo v1).
+> RF06 (buffer/replay não conectado), RNF05 (Casbin fora do escopo v1; TLS via túnel ngrok)
+> e RNF02/RNF03 (sem testes de carga). Já resolvidos: RF03 (um falante por vez, `voiceGuard`),
+> persistência PostgreSQL (Fase 1) e RNF06 (URL do servidor editável, Fase 3).
 
 ## Requisitos Funcionais
 

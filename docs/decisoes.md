@@ -281,3 +281,118 @@ fora de escopo da v1**.
 - Divergência assumida entre `docs/arquitetura.md`, `docs/banco-de-dados.md` e o código.
 - O mapeamento consolidado das lacunas fica em `PROJECT_STATE.md` →
   *Lacunas / Aderência aos Requisitos*.
+
+**Atualização (20/10/2026)**: PostgreSQL **implementado** na Fase 1 (ver DEC-012) —
+stores PG, runner de migrações em `backend/internal/db/migrations/` e persistência
+de `users`/`channels`/`user_channels`. O restante do texto acima permanece válido
+(OAuth, Casbin e TLS seguem fora do escopo v1; TLS hoje é entregue pelo túnel
+ngrok, ver DEC-013).
+
+---
+
+## DEC-012 — Persistência PostgreSQL com stores injetados (DIP)
+
+**Data**: 20/10/2026
+
+**Decisão**: Implementar a persistência da Fase 1 com interfaces `UserStore` e
+`ChannelStore`, implementações `PGUserStore`/`PGChannelStore` (driver
+`jackc/pgx/v5` via `database/sql`) e `MemoryUserStore`/`MemoryChannelStore`
+mantidas para testes, injetadas nos services (injeção de dependência).
+
+**Motivo**:
+- Concretizar a DEC-001 sem acoplar o domínio ao driver de banco.
+- Testes de unidade rápidos com store em memória; integração real via
+  `RADIOPX_TEST_DB=1` no `pg_integration_test.go`.
+- Runner de migrações embutido (`go:embed`), idempotente e com falha rápida no boot.
+
+**Alternativas Consideradas**:
+- GORM/ORM: mais convenção que o necessário para 3 tabelas.
+- sqlc/geração de tipos: sobreposição para o tamanho do modelo.
+- Store concreto nos services: acoplaria domínio e infra (violaria DIP).
+
+**Impacto**:
+- `internal/user/repository.go` e `internal/channel/repository.go` definem as interfaces; `cmd/server/main.go` escolhe PG (com banco) ou memória (fallback de teste).
+- `001_initial.sql` movido para `internal/db/migrations/` + `002_align_models.sql` alinhando os modelos.
+
+---
+
+## DEC-013 — Exposição do backend via ngrok (TLS + CORS wildcard)
+
+**Data**: 27/10/2026
+
+**Decisão**: Expor o backend na porta 8080 por túnel **ngrok** (plano free,
+`ngrok http 8080`), com URL HTTPS/WSS por sessão; CORS aceitando
+`https://*.ngrok-free.app` e `https://*.ngrok-free.dev` (wildcard por origem,
+`rs/cors` v1.10.1) para permitir testes de navegador.
+
+**Motivo**:
+- O IP da máquina oscila a cada lease de DHCP e quebrava o APK (Problema nº 4).
+- O túnel entrega TLS e um hostname estável **por sessão** sem configurar
+  certificados localmente (RNF05 parcial: transporte cifrado de ponta a ponta
+  no fluxo do app).
+- Wildcard é suportado nativamente pelo `rs/cors` (verificado na fonte).
+
+**Alternativas Consideradas**:
+- Cloudflare Tunnel: exige conta/CLI separada, sem vantagem para o protótipo.
+- IP estático/reserva DHCP: depende do roteador, não resolve para fora da LAN.
+- Deploy em nuvem: custo e escopo maiores que o necessário para o TCC.
+
+**Impacto**:
+- URL muda a cada reinício do túnel no plano free — mitigado pela DEC-015
+  (URL editável em runtime no app).
+- Todo tráfego REST chega com `RemoteAddr` do agente local → ver DEC-014.
+- Scripts de teste usam o header `ngrok-skip-browser-warning: 1` para não
+  receber a página de aviso (`ERR_NGROK_6024`).
+
+---
+
+## DEC-014 — Rate limit por RemoteAddr mantido atrás do túnel
+
+**Data**: 27/10/2026
+
+**Decisão**: Manter o rate limit (10 req/min em register/login/refresh)
+identificando o cliente por `RemoteAddr`, **ignorando `X-Forwarded-For`**, mesmo
+com o tráfego vindo do ngrok — aceitando que a cota passa a valer para o
+**somatório de todos os clientes** do túnel.
+
+**Motivo**:
+- Confiar em XFF sem validar a cadeia permite forjar IP e burlar o limite
+  (o mesmo problema do bypass corrigido em 11/10/2026).
+- Para o protótipo com poucos testers, cota global é aceitável; um 429
+  compartilhado é mais tolerável do que um rate limit contornável.
+
+**Alternativas Consideradas**:
+- Confiar no XFF quando `RemoteAddr` for o agente local: quebra se o túnel for
+  exposto publicamente sem proxy de confiança — decisão de segurança adiada.
+- Autenticação prévia no rate limit: mudaria a ordem das camadas e o escopo.
+
+**Impacto**:
+- Registrado como **Problema Conhecido nº 9** em `PROJECT_STATE.md` — reavaliar
+  se aparecer 429 em campo (contornos: subir cota ou confiar XFF só do agente local).
+
+---
+
+## DEC-015 — URL do servidor editável em runtime no app (RNF06)
+
+**Data**: 27/10/2026
+
+**Decisão**: A URL da API passa a ser configurável **dentro do app** (RNF06):
+semente do build (`--dart-define=API_BASE_URL`) como default, URL salva pelo
+usuário em `shared_preferences` com precedência, sheet com **Testar**
+(`GET /health`) e **Salvar** acessível no Login e no Perfil. A **sessão é
+mantida** ao trocar a URL.
+
+**Motivo**:
+- Sem isso, cada nova URL do ngrok exigiria recompilar e reinstalar o APK.
+- A sessão segue válida no mesmo banco/secret; se o usuário apontar para outro
+  servidor, o fluxo existente de 401/refresh-fail já limpa a sessão.
+
+**Alternativas Consideradas**:
+- Só recompilar com `--dart-define`: era o estado anterior (Fase 2) — inviável em demonstração.
+- Arquivo de config externo ao lado do APK: complicação extra no Android sem ganho.
+- Forçar logout ao trocar URL: derrubava a sessão mesmo no mesmo servidor.
+
+**Impacto**:
+- `AppConfig` (runtime) + 3 services lendo `baseUrl` via getter; `main()` carrega
+  as preferências antes do `runApp`.
+- Fim do Problema Conhecido nº 4 (DHCP) e da pendência de URL por sessão da Fase 2.

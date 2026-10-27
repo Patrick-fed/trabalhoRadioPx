@@ -6,7 +6,14 @@ Este documento registra o estado atual do projeto para facilitar a continuidade 
 
 ## Fase
 
-**Desenvolvimento - Protótipo Funcional + APK Android (27/10/2026 - Fase 3: URL do servidor editável)**
+**Desenvolvimento - Protótipo Funcional + APK Android (27/10/2026 - Fase 4: documentação final)**
+
+Em 27/10/2026 a Fase 4 fechou a documentação do plano aprovado: `banco-de-dados.md`
+reescrito para o schema pós-`002`, `decisoes.md` com DEC-012..015 (persistência
+PG+DIP, ngrok/TLS/CORS, rate limit global, URL editável), `arquitetura.md` corrigido
+(árvores reais, endpoints, Redis/OAuth/Casbin marcados), `requisitos.md` com nota
+atualizada, `README.md` reescrito e `.env.example` limpo. Ver
+[CHANGELOG](CHANGELOG.md) de 27/10/2026.
 
 Em 27/10/2026 a Fase 3 entrou em vigor: a URL da API é editável em runtime
 pelo app (RNF06), com semente do build (`--dart-define`), persistência em
@@ -39,8 +46,8 @@ de e-mail duplicado no cadastro voltou a funcionar.
 
 ## Lacunas / Aderência aos Requisitos
 
-> **Fonte única de verdade** para o que ainda falta. Atualizado em 13/10/2026 após auditoria do
-> código. As seções de requisitos/progresso deste documento são anteriores a esta auditoria.
+> **Fonte única de verdade** para o que ainda falta. Atualizado em 27/10/2026 (Fase 4).
+> As seções de requisitos/progresso deste documento são anteriores a esta auditoria.
 
 ### Lacunas dentro do escopo v1 (a corrigir)
 
@@ -72,12 +79,13 @@ de e-mail duplicado no cadastro voltou a funcionar.
 
 ### Trabalho futuro — fora de escopo v1 (decisão explícita, 13/10/2026)
 
-Estes itens **não** serão implementados na v1. O protótipo roda em memória e sem eles:
+Estes itens **não** serão implementados na v1 (persistência em PostgreSQL desde 20/10):
 
 - **RF02 — Google OAuth.** `CreateOAuthUser` existe, mas não há integração Google nem endpoint
   OAuth. (Ver tambem DEC-002 e DEC-011 em `docs/decisoes.md`.)
 - **RNF05 — Casbin (controle de acesso por papéis).** Não implementado.
-- **RNF05 — TLS.** `main.go` usa `ListenAndServe` HTTP puro (`backend/cmd/server/main.go:112`).
+- **RNF05 — TLS.** `main.go` usa `ListenAndServe` HTTP puro (`backend/cmd/server/main.go:124`);
+  no protótipo o TLS é entregue pelo túnel ngrok (DEC-013).
 - ~~**DEC-001 / FR-013 — PostgreSQL.**~~ **Entregue em 20/10/2026 (Fase 1)**: driver
   `jackc/pgx/v5` v5.7.4 no `go.mod`, runner de migrações em `internal/db` e stores PG
   para `users`/`channels`/`user_channels`.
@@ -89,13 +97,14 @@ Estes itens **não** serão implementados na v1. O protótipo roda em memória e
 - `backend/internal/middleware/cors.go` e `logging.go` (o `main.go` usa `github.com/rs/cors`).
 - `frontend/lib/features/channels/screens/channel_detail_screen.dart` (nunca é navegada).
 
-### Documentação desatualizada
+### Documentação — estado em 27/10/2026 (Fase 4)
 
-- `docs/arquitetura.md` → tabela "Status de Implementação" marca tudo ✅.
-- `docs/requisitos.md` → marca todos os RF/RNF como definidos, sem status de implementação.
+- ~~`docs/arquitetura.md`~~ — corrigido em 27/10 (árvores reais, endpoints, Redis/OAuth/Casbin marcados).
+- ~~`docs/requisitos.md`~~ — nota de status atualizada em 27/10 (RF03/PG/RNF06).
 - `specs/001-px-radio-simulation/tasks.md` → T001–T073 marcados `[x]`, mas T045–T051
-  (buffer/replay) e a parte de OAuth de T052–T061 não foram entregues.
-- `README.md` → seção "Status Atual" ainda diz "Fase: Inicialização".
+  (buffer/replay) e a parte de OAuth de T052–T061 não foram entregues (**fora de escopo**).
+- ~~`README.md`~~ — reescrito em 27/10 (status real, testes, APK/ngrok, env vars).
+- `docs/banco-de-dados.md` e `docs/decisoes.md` atualizados na Fase 4 (schema pós-002; DEC-012..015).
 
 ---
 
@@ -122,6 +131,7 @@ Estes itens **não** serão implementados na v1. O protótipo roda em memória e
 - ✅ RNF03 - Escalabilidade (Definido)
 - ✅ RNF04 - Resiliência (Definido)
 - ✅ RNF05 - Segurança (Definido)
+- ✅ RNF06 - Configurabilidade do servidor (adicionado em 27/10/2026, Fase 3)
 
 ---
 
@@ -165,23 +175,25 @@ Estes itens **não** serão implementados na v1. O protótipo roda em memória e
 
 ### Backend
 
-- ✅ Módulo Voice (handler, service, websocket, buffer)
-- ✅ Módulo Location (handler, service)
-- ✅ Módulo Channel (handler, service)
-- ✅ Módulo Auth (handler, service, middleware)
-- ✅ Módulo User (handler, service)
+- ✅ Módulo Voice (handler, service, websocket; buffer parcial — ver Lacunas RF06)
+- ✅ Módulo Location (apenas `distance.go`; handler/service removidos em 27/10)
+- ✅ Módulo Channel (handler, service, stores)
+- ✅ Módulo Auth (service; JWT)
+- ✅ Módulo User (handler, service, stores)
 - ✅ Persistência PostgreSQL (stores PG em user/channel, migrações em `internal/db`)
-- ⏳ Testes unitários
+- ✅ Testes unitários (9 arquivos `_test.go`)
 - ✅ Testes de integração (opt-in `RADIOPX_TEST_DB=1`)
 
 ### Frontend
 
 - ✅ Feature Voice (screens, widgets, services, models)
-- ✅ Feature Location (screens, services, models)
+- ✅ Feature Location (services, models)
 - ✅ Feature Channels (screens, services, models)
 - ✅ Feature Auth (screens, services, models)
 - ✅ Feature Profile (screens, services, models)
-- ⏳ Core (network, websocket, permissions, utils)
+- ✅ Feature Settings (server_url_sheet — RNF06)
+- ✅ Core (api_client, config runtime, websocket, permissions)
+- ⏳ Itens mortos do pubspec: `dio`, `provider`, `google_fonts`, `path_provider` (sem imports; remover quando seguro)
 
 ### Infraestrutura
 
@@ -192,6 +204,40 @@ Estes itens **não** serão implementados na v1. O protótipo roda em memória e
 ---
 
 ## Última Alteração
+
+**27/10/2026 - Fase 4: documentação final do plano aprovado**
+
+**Data**: 27/10/2026
+
+**Descrição**:
+- **`banco-de-dados.md`**: DDLs reescritos para o estado pós-`002_align_models.sql`
+  (`users` com `provider`/`is_active`/`avatar` e `cpf` opcional; `channels` com
+  localização/`created_by`); índices corrigidos (`idx_users_phone` inexistente
+  removido; `idx_channels_created`/`idx_channels_location` incluídos); seção do
+  runner de migrações e `schema_migrations`; consulta de bounding-box
+- **`decisoes.md`**: DEC-012 (persistência PG + stores injetados/DIP), DEC-013
+  (ngrok + TLS + CORS wildcard), DEC-014 (rate limit global por RemoteAddr),
+  DEC-015 (URL editável em runtime / RNF06); nota de atualização na DEC-011
+- **`arquitetura.md`**: árvores backend/frontend com arquivos reais (remove
+  `dio_client`, `pkg/audio`, handler/location mortos; inclui `internal/db` e
+  migrações 001+002); endpoints corrigidos (`/ws/audio/?channel=...`,
+  `/api/v1/user/profile`); Redis/OAuth/Casbin/roles marcados como não
+  implementados; fluxo de buffer/replay marcado como não conectado
+- **`requisitos.md`**: nota de status atualizada (RF03 resolvido, PG desde 20/10,
+  RNF06 entregue)
+- **`README.md`**: reescrito — monolito modular declarado, env vars reais
+  (`SERVER_PORT`/`JWT_SECRET`/`DB_*`), seções de Testes e APK/ngrok, árvore
+  corrigida, status real
+- **`backend/.env.example`**: limpo — só variáveis lidas pelo código
+- **`PROJECT_STATE.md`**: esta entrada; Fase 4 marcada como concluída; Lacunas,
+  Pendentes e Dependências atualizadas
+
+**Verificação**: greps de consistência (sem `dio_client`, `idx_users_phone`,
+`WS_BASE_URL`, Redis não-marcado); DEC-012..015 sem buraco de numeração. Sem
+mudança de código Go/Dart (docs + `.env.example` apenas). Detalhes em
+`CHANGELOG.md`.
+
+---
 
 **27/10/2026 - Fase 3: URL do servidor editável em runtime no app**
 
@@ -507,7 +553,7 @@ frontend intocado. Detalhes em `CHANGELOG.md`.
 
 ## Próxima Tarefa
 
-**Plano aprovado — Fases 0, 1, 2 e 3 concluídas; pendente 4**
+**Plano aprovado — Fases 0, 1, 2, 3 e 4 concluídas**
 
 ### Próximas Fases
 
@@ -515,8 +561,9 @@ frontend intocado. Detalhes em `CHANGELOG.md`.
    (túnel + CORS + script; ver CHANGELOG da data. URL por sessão no plano free)
 2. ~~**Fase 3 — Tela para colar a URL do servidor no app**~~ — **Concluída em
    27/10/2026** (RNF06 adicionado; `AppConfig` em runtime + sheet Login/Perfil)
-3. **Fase 4 — Documentação**: `docs/banco-de-dados.md` (schema 002), `docs/decisoes.md`
-   (DEC-012+), `PROJECT_STATE.md`/`README.md` finais
+3. ~~**Fase 4 — Documentação**~~ — **Concluída em 27/10/2026** (`banco-de-dados.md`
+   pós-002, DEC-012..015, `arquitetura.md` corrigido, `README.md` reescrito,
+   `.env.example` limpo)
 
 ---
 
@@ -540,19 +587,26 @@ frontend intocado. Detalhes em `CHANGELOG.md`.
 
 - Go 1.21+
 - PostgreSQL 14+
-- `github.com/jackc/pgx/v5` v5.7.4 (driver PostgreSQL, adicionado em 20/10/2026)
-- Redis (opcional, para cache)
+- `github.com/golang-jwt/jwt/v5` v5.2.0 (JWT)
+- `github.com/google/uuid` v1.6.0 (UUIDs)
+- `github.com/gorilla/websocket` v1.5.1 (WebSocket)
+- `github.com/jackc/pgx/v5` v5.7.4 (driver PostgreSQL, Fase 1)
+- `github.com/rs/cors` v1.10.1 (CORS, inclui wildcard ngrok)
+- `golang.org/x/crypto` v0.31.0 (bcrypt)
 
 ### Frontend
 
-- Flutter 3.16+
-- Dart SDK
-- Android SDK / Xcode
+- Flutter 3.16+ / Dart SDK / Android SDK
+- Pacotes usados: `http`, `shared_preferences`, `web_socket_channel`, `record`,
+  `flutter_sound`, `geolocator`
+- Declarados sem uso: `dio`, `provider`, `google_fonts`, `path_provider`
+  (candidatos a remoção)
 
 ### Desenvolvimento
 
 - Git
 - IDE (VS Code/GoLand)
+- ngrok (exposição do backend em demonstração)
 - Docker (opcional)
 
 ---

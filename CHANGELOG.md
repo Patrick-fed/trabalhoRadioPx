@@ -4,6 +4,106 @@ Este documento registra todas as alterações significativas do projeto.
 
 ---
 
+## 27/10/2026 - Fase 4: documentação final do plano aprovado
+
+### Contexto
+
+Fase 4 (última) do plano aprovado: fechar a documentação para que ela descreva
+o sistema **como ele é** em 27/10/2026 — monolito modular Go com PostgreSQL
+(Fase 1), túnel ngrok (Fase 2) e URL do servidor editável no app (Fase 3).
+Nenhum código Go/Dart foi alterado; o único arquivo fora de `docs/` foi
+`backend/.env.example`.
+
+### Alterações
+
+**`docs/banco-de-dados.md`**
+
+- DDLs reescritos para o estado **pós-`002_align_models.sql`**: `users` com
+  `provider`/`provider_id`/`is_active`/`avatar` e `cpf` opcional; `channels`
+  com `description`/`latitude`/`longitude`/`created_by`/`updated_at`
+- Índices: removido `idx_users_phone` (inexistente no SQL); incluídos
+  `idx_channels_created` e `idx_channels_location`
+- Nova subseção para `002_align_models.sql`; documentado o runner de migrações
+  (`internal/db/migrate.go`, `go:embed`, `schema_migrations`, falha rápida no
+  boot) e o caminho real `backend/internal/db/migrations/`
+- Nova consulta de proximidade (bounding-box + Haversine)
+
+**`docs/decisoes.md`**
+
+- **DEC-012** — Persistência PostgreSQL com stores injetados (DIP)
+- **DEC-013** — Exposição via ngrok (TLS + CORS wildcard)
+- **DEC-014** — Rate limit por RemoteAddr mantido (cota global atrás do túnel)
+- **DEC-015** — URL do servidor editável em runtime (RNF06; sessão mantida)
+- **DEC-011** ganhou nota de atualização (PostgreSQL implementado na Fase 1)
+
+**`docs/arquitetura.md`**
+
+- Árvore backend corrigida com os arquivos reais (inclui `internal/db` +
+  migrações 001+002; remove `pkg/audio`, handler/location mortos; adiciona
+  `pkg/security`, `pkg/utils`)
+- Árvore frontend corrigida (remove `network/dio_client.dart`, `interceptors.dart`,
+  `websocket_manager.dart`, `utils/constants|helpers`)
+- Endpoints: `/api/v1/users/*` → `/api/v1/user/profile`; `/ws/audio/{channel_id}`
+  → `/ws/audio/?channel=...&token=...`
+- Location Module: de "handler/service" para apenas `distance.go`
+- Redis removido do diagrama e das otimizações; OAuth/Casbin/roles marcados
+  como fora do escopo v1; fluxo de buffer/replay marcado como não conectado
+- Nota do topo e "Auth service" atualizadas (RF03 ok; OAuth futuro)
+
+**`docs/requisitos.md`**
+
+- Nota de status atualizada (27/10): RF03 resolvido, PostgreSQL desde 20/10,
+  RNF06 entregue; Casbin fora do v1; TLS via túnel
+
+**`README.md`**
+
+- Reescrito: monolito modular declarado na descrição; tabela de tecnologias com
+  ngrok e JWT-only; backend com pré-requisito explícito de PostgreSQL e `.env`;
+  frontend com `--dart-define=API_BASE_URL` (semente, editável no app)
+- Env vars: só as reais (`SERVER_PORT`, `JWT_SECRET`, `DB_*`) — removidas
+  `WS_BASE_URL`, `GOOGLE_CLIENT_ID`, `PROXIMITY_*`, `MAX_*`, `AUDIO_*` etc.
+- Novas seções **Testes** (`go test`, `RADIOPX_TEST_DB=1`, `flutter test`,
+  `test-backend.ps1 [-BaseUrl]`) e **APK e ngrok**
+- Árvore do projeto corrigida; **Status Atual** com o estado real
+
+**`backend/.env.example`**
+
+- Limpo: só `SERVER_PORT`, `JWT_SECRET` e `DB_*` (as únicas variáveis lidas
+  por `os.Getenv` no backend)
+
+**`PROJECT_STATE.md`**
+
+- Fase 4 concluída (Próximas Fases, cabeçalho); Lacunas/RNF06/Pendentes e
+  Dependências atualizados (Redis removido; pacotes Go/Flutter reais); entrada
+  em "Última Alteração"
+
+### Motivo
+
+Documento que descreve o passado confunde quem continua o projeto (regra do
+repo: docs são fonte de contexto). Esta fase fecha a divergência entre docs e
+código acumulada desde 13/10 — o mesmo tipo de auditoria que motivou a Fase 0.
+
+### Verificação
+
+- Greps de consistência: zero ocorrências de `dio_client`, `idx_users_phone`,
+  `WS_BASE_URL` e Redis não-marcado como inexistente.
+- Numeração DEC-012..015 sem buraco; DEC-011 com nota de atualização.
+- `backend/.env.example` bate com os `os.Getenv` reais (`main.go`, `internal/db/db.go`).
+- Sem mudança de código: `go test`/`flutter test` não eram necessários
+  (nenhum `.go`/`.dart` alterado).
+
+### Decisões e observações
+
+- DEC-012..015 seguem o formato das entradas existentes (Data/Decisão/Motivo/
+  Alternativas/Impacto), sem campo Status (mesmo padrão de DEC-001..010).
+- O specs (`tasks.md`) não foi reescrito: é artefato do speckit e está fora do
+  plano; a divergência de T045–T061 permanece registrada nas Lacunas.
+- Pacotes Flutter sem uso (`dio`, `provider`, `google_fonts`, `path_provider`)
+  foram apenas **registrados** como débito; remoção exige mudança de código e
+  fica para fora desta fase de docs.
+
+---
+
 ## 27/10/2026 - Fase 3: URL do servidor editável em runtime no app
 
 ### Contexto

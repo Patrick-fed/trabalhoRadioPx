@@ -15,9 +15,10 @@ Arquitetura monolítica modular com separação por responsabilidades. O sistema
 | Location | ✅ Completo | ✅ Completo | ✅ |
 | Profile | N/A | ✅ Completo | ✅ |
 
-> **Nota (13/10/2026)**: a tabela acima é aspiracional. O estado real — Voice parcial (sem bloqueio
-> de um falante por vez), Buffer de voz não conectado ao WebSocket, Location e Channels em memória —
-> está em `PROJECT_STATE.md` → *Lacunas / Aderência aos Requisitos*.
+> **Nota (27/10/2026)**: a tabela acima é aspiracional. Estado real: Voice com um falante por vez
+> (`voiceGuard`, 27/10), Location reduzida a cálculo de distância (handler removido), canais e
+> usuários em **PostgreSQL desde 20/10**, buffer/replay de voz ainda **não conectados**.
+> Detalhes em `PROJECT_STATE.md` → *Lacunas / Aderência aos Requisitos*.
 
 ## Diagrama de Alto Nível
 
@@ -53,8 +54,8 @@ Arquitetura monolítica modular com separação por responsabilidades. O sistema
 ┌─────────────────────────────────────────────────────┐
 │                Infrastructure                       │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐ │
-│  │  PostgreSQL │  │   Redis     │  │  WebSocket  │ │
-│  │  Database   │  │   Cache     │  │   Server    │ │
+│  │  PostgreSQL │  │  WebSocket  │  │    ngrok    │ │
+│  │  Database   │  │   Server    │  │   Tunnel    │ │
 │  └─────────────┘  └─────────────┘  └─────────────┘ │
 └─────────────────────────────────────────────────────┘
 ```
@@ -71,47 +72,56 @@ backend/
 │
 ├── internal/
 │   ├── auth/
-│   │   ├── handler.go                 # HTTP handlers
-│   │   ├── service.go                 # Lógica de negócio
-│   │   ├── repository.go              # Acesso a dados
-│   │   └── middleware.go              # JWT middleware
+│   │   └── service.go                  # Lógica de negócio de auth
 │   │
 │   ├── user/
 │   │   ├── handler.go
 │   │   ├── service.go
-│   │   └── repository.go
+│   │   ├── repository.go               # Interface UserStore + PGUserStore
+│   │   ├── memory_store.go             # MemoryUserStore (testes)
+│   │   └── model.go
 │   │
 │   ├── channel/
 │   │   ├── handler.go
 │   │   ├── service.go
-│   │   └── repository.go
+│   │   ├── repository.go               # Interface ChannelStore + PGChannelStore
+│   │   ├── memory_store.go             # MemoryChannelStore (testes)
+│   │   └── model.go
+│   │
+│   ├── db/
+│   │   ├── db.go                       # Config env + Open (pool/ping)
+│   │   ├── migrate.go                  # Runner de migrações (go:embed)
+│   │   └── migrations/
+│   │       ├── 001_initial.sql
+│   │       └── 002_align_models.sql
 │   │
 │   ├── voice/
 │   │   ├── handler.go
 │   │   ├── service.go
-│   │   ├── websocket.go               # WebSocket handling
-│   │   └── buffer.go                  # Buffer temporário
+│   │   ├── websocket.go                # WebSocket handling
+│   │   ├── buffer_manager.go           # Buffer temporário (não conectado)
+│   │   ├── buffer_model.go
+│   │   └── buffer_service.go
 │   │
 │   ├── location/
-│   │   ├── handler.go
-│   │   └── service.go
+│   │   └── distance.go                 # EarthRadiusKm + CalculateDistance
 │   │
 │   └── middleware/
-│       ├── auth.go                    # Autenticação
-│       ├── cors.go                    # CORS
-│       └── ratelimit.go               # Rate limiting
+│       ├── auth.go                     # Autenticação (REST + WS)
+│       ├── cors.go
+│       ├── logging.go
+│       └── ratelimit.go                # Rate limiting (RemoteAddr)
 │
 ├── pkg/
 │   ├── websocket/
-│   │   ├── hub.go                     # Hub de conexões
-│   │   └── client.go                  # Cliente WebSocket
+│   │   ├── hub.go                      # Hub de conexões
+│   │   └── client.go                   # Cliente WebSocket + voiceGuard
 │   │
-│   └── audio/
-│       ├── codec.go                   # Codificação de áudio
-│       └── buffer.go                  # Buffer de áudio
-│
-├── migrations/
-│   └── 001_initial.sql                # Migrações do banco
+│   ├── security/
+│   │   └── config.go                   # Config (não utilizado no boot)
+│   │
+│   └── utils/
+│       └── helpers.go
 │
 ├── go.mod
 └── go.sum
@@ -127,22 +137,23 @@ backend/
 #### User Module
 - **Responsabilidade**: Gestão de usuários
 - **Dependências**: Nenhuma
-- **Endpoints**: `/api/v1/users/*`
+- **Endpoints**: `/api/v1/user/profile`, `/api/v1/user/change-password`
 
 #### Channel Module
 - **Responsabilidade**: Alocação e gestão de canais
-- **Dependências**: User module, Location service
+- **Dependências**: User module; localização via `internal/location` (distância)
 - **Endpoints**: `/api/v1/channels/*`
 
 #### Voice Module
 - **Responsabilidade**: PTT e streaming de áudio
 - **Dependências**: Channel module, WebSocket
-- **Endpoints**: `/ws/audio/{channel_id}`
+- **Endpoint**: `/ws/audio/?channel=...&token=...` (autenticado por JWT)
 
 #### Location Module
-- **Responsabilidade**: GPS e cálculo de proximidade
+- **Responsabilidade**: Cálculo de distância (Haversine) para proximidade
 - **Dependências**: Nenhuma
-- **Endpoints**: `/api/v1/location/*`
+- **Código**: apenas `distance.go` (handler/service removidos em 27/10/2026 —
+  a localização trafega nos payloads da API de canais)
 
 #### Middleware
 - **Responsabilidade**: Interceptadores HTTP
@@ -156,23 +167,15 @@ backend/
 ```
 lib/
 ├── core/
-│   ├── config.dart                      # URL da API em runtime (RNF06)
-│   ├── network/
-│   │   ├── api_client.dart            # Cliente HTTP
-│   │   ├── dio_client.dart            # Configuração Dio
-│   │   └── interceptors.dart          # Interceptadores
+│   ├── api_client.dart                 # Cliente HTTP (package:http, timeout 10s)
+│   ├── config.dart                     # URL da API em runtime (RNF06)
 │   │
 │   ├── websocket/
-│   │   ├── websocket_service.dart     # Serviço WebSocket
-│   │   └── websocket_manager.dart     # Gerenciador
+│   │   └── websocket_service.dart      # Serviço WebSocket (wss derivado)
 │   │
-│   ├── permissions/
-│   │   ├── location_permission.dart   # Permissão de localização
-│   │   └── microphone_permission.dart # Permissão de microfone
-│   │
-│   └── utils/
-│       ├── constants.dart             # Constantes
-│       └── helpers.dart               # Funções auxiliares
+│   └── permissions/
+│       ├── location_permission.dart    # Permissão de localização
+│       └── microphone_permission.dart  # Permissão de microfone
 │
 ├── features/
 │   ├── auth/
@@ -250,7 +253,7 @@ lib/
 #### Auth Feature
 - **Responsabilidade**: Login e registro
 - **Screens**: Login, Register
-- **Services**: Auth service (JWT, OAuth)
+- **Services**: Auth service (JWT; OAuth fora do escopo v1)
 
 #### Channels Feature
 - **Responsabilidade**: Gestão de canais
@@ -271,6 +274,10 @@ lib/
 - **Responsabilidade**: Perfil do usuário
 - **Screens**: Profile screen
 - **Services**: Profile service
+
+#### Settings Feature
+- **Responsabilidade**: Configuração do servidor (RNF06)
+- **Widgets**: Server URL sheet (Testar/Salvar)
 
 ## Comunicação
 
@@ -304,7 +311,9 @@ lib/
 ```
 
 **Endpoint:**
-- `ws://localhost:8080/ws/audio/{channel_id}` - Streaming de áudio
+- `ws://<host>:<port>/ws/audio/?channel=<id>&user_id=<id>&token=<JWT>` —
+  streaming de áudio (autenticado por query param; `wss://` quando a base é
+  `https://`, derivado automaticamente no app)
 
 ## Fluxo de Voz (Crítico)
 
@@ -319,7 +328,8 @@ lib/
 │  2. Flutter captura áudio do microfone                       │
 │       │                                                     │
 │       ▼                                                     │
-│  3. Áudio codificado/comprimido (Opus/AAC)                  │
+│  3. Áudio em PCM16 (sem compressão — divergência
+│     da spec "Opus/AAC", registrada em PROJECT_STATE)
 │       │                                                     │
 │       ▼                                                     │
 │  4. Enviado via WebSocket                                   │
@@ -349,6 +359,13 @@ lib/
 ```
 
 ## Fluxo de Conexão (Resiliência)
+
+> **Status (27/10/2026)**: a reconexão com backoff existe no app (5 tentativas,
+> validação em campo pendente), mas o **buffer de replay abaixo está como
+> concepção**: o código de buffer existe (`internal/voice/buffer_*`,
+> `message_buffer_model.dart`) mas **não está conectado ao WebSocket** — pacotes
+> não são armazenados nem reproduzidos após reconexão (RF06/RNF04, ver
+> `PROJECT_STATE.md`).
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -385,21 +402,20 @@ lib/
 
 ### Autenticação
 
-1. **JWT**: Tokens stateless para APIs REST
-2. **OAuth**: Login social via Google
-3. **Casbin**: Controle de acesso baseado em papéis
+1. **JWT**: Tokens stateless para APIs REST (access + refresh, HS256)
+2. ~~**OAuth**~~: Login social via Google **fora do escopo v1** (DEC-011)
+3. ~~**Casbin**~~: Controle de acesso baseado em papéis **fora do escopo v1** (DEC-011)
 
 ### Criptografia
 
-1. **TLS**: Comunicação em trânsito
+1. **TLS**: Em produção, obrigatório; no protótipo entregue pelo túnel ngrok (DEC-013)
 2. **bcrypt**: Senhas hasheadas
-3. **JWT Secret**: Nunca em repositório
+3. **JWT Secret**: Nunca em repositório (fallback de dev com aviso no log)
 
 ### Autorização
 
-1. **Middlewares**: Verificação em cada requisição
-2. **Roles**: Admin, User
-3. **Permissions**: Baseadas em módulos
+1. **Middlewares**: Verificação em cada requisição REST e no handshake do WS
+2. ~~**Roles**~~: Admin/User não implementados (conta única, escopo v1)
 
 ## Performance
 
@@ -415,5 +431,5 @@ lib/
 
 1. **WebSocket**: Conexões persistentes
 2. **Buffer**: Armazenamento em memória
-3. **Índices**: Otimização de queries
-4. **Cache**: Redis para dados frequentes
+3. **Índices**: Otimização de queries (ver `docs/banco-de-dados.md`)
+4. ~~**Cache**~~: Redis **não utilizado** (sem dependência no `go.mod`; ver DEC-011)
