@@ -6,7 +6,13 @@ Este documento registra o estado atual do projeto para facilitar a continuidade 
 
 ## Fase
 
-**Desenvolvimento - Protótipo Funcional + APK Android (11/10/2026 - segunda revisão do login)**
+**Desenvolvimento - Protótipo Funcional + APK Android (20/10/2026 - Fase 1: persistência PostgreSQL)**
+
+Em 20/10/2026 a Fase 1 do plano aprovado entrou em vigor: usuários, canais e memberships
+agora são persistidos em PostgreSQL (pacote `internal/db` + stores PG em `user`/`channel`),
+com runner de migrações embutido (`001` idempotente + `002_align_models`). Localização
+segue em memória e áudio nunca é persistido (escopo aprovado). Ver
+[CHANGELOG](CHANGELOG.md) de 20/10/2026.
 
 Em 11/10/2026 o login passou por nova auditoria: corrigido um bypass do rate limit via headers de
 encaminhamento, IDs de usuário passaram a ser UUIDs, sessão expirada sem refresh é limpa e a detecção
@@ -43,12 +49,14 @@ de e-mail duplicado no cadastro voltou a funcionar.
   (`backend/internal/voice/websocket.go:44`), mas o áudio trafegado é **PCM16 cru** em base64, sem
   compressão. Decidir se vira lacuna ou se é aceitável para v1.
 
-- **Distância do canal nunca é serializada.** `Channel` não tem campo `distance` e
-  `GetNearbyChannels` usa a distância só para ordenar (`backend/internal/channel/model.go`). Ver
-  [Problemas Conhecidos](#problemas-conhecidos) nº 1.
+- ~~**Distância do canal nunca é serializada.**~~ **Resolvido na `feature-login`**: o modelo
+  `Channel` tem campo `distance,omitempty` e `GetNearbyChannels` o popula; o frontend
+  (`channel_model.dart`) já faz parse e renderiza (`distanceFormatted`).
 
-- **Testes de integração/E2E ausentes.** Só há testes unitários (backend: 8 arquivos `_test.go`;
-  frontend: 41 casos). Não existe teste do fluxo de áudio ponta-a-ponta.
+- **Testes de integração/E2E.** Backend ganhou `internal/db/pg_integration_test.go` (opt-in via
+  `RADIOPX_TEST_DB=1`; cobre stores PG + migrações contra banco real) e há o script
+  `scripts/test-backend.ps1` (28 checks, exige servidor rodando). Ainda não há teste
+  automatizado do fluxo de áudio ponta-a-ponta no CI.
 
 ### Trabalho futuro — fora de escopo v1 (decisão explícita, 13/10/2026)
 
@@ -58,8 +66,9 @@ Estes itens **não** serão implementados na v1. O protótipo roda em memória e
   OAuth. (Ver tambem DEC-002 e DEC-011 em `docs/decisoes.md`.)
 - **RNF05 — Casbin (controle de acesso por papéis).** Não implementado.
 - **RNF05 — TLS.** `main.go` usa `ListenAndServe` HTTP puro (`backend/cmd/server/main.go:112`).
-- **DEC-001 / FR-013 — PostgreSQL.** Nenhum driver no `go.mod`; `backend/migrations/001_initial.sql`
-  nunca é aplicado. Persistência é em `map` + `RWMutex`.
+- ~~**DEC-001 / FR-013 — PostgreSQL.**~~ **Entregue em 20/10/2026 (Fase 1)**: driver
+  `jackc/pgx/v5` v5.7.4 no `go.mod`, runner de migrações em `internal/db` e stores PG
+  para `users`/`channels`/`user_channels`.
 - **Deploy e monitoramento.** Sem `Dockerfile`/`docker-compose`, sem métricas.
 
 ### Débito técnico (código morto, sem chamadas)
@@ -149,8 +158,9 @@ Estes itens **não** serão implementados na v1. O protótipo roda em memória e
 - ✅ Módulo Channel (handler, service)
 - ✅ Módulo Auth (handler, service, middleware)
 - ✅ Módulo User (handler, service)
+- ✅ Persistência PostgreSQL (stores PG em user/channel, migrações em `internal/db`)
 - ⏳ Testes unitários
-- ⏳ Testes de integração
+- ✅ Testes de integração (opt-in `RADIOPX_TEST_DB=1`)
 
 ### Frontend
 
@@ -170,6 +180,41 @@ Estes itens **não** serão implementados na v1. O protótipo roda em memória e
 ---
 
 ## Última Alteração
+
+**20/10/2026 - Fase 1: persistência PostgreSQL (fim do estado em memória)**
+
+**Data**: 20/10/2026
+
+**Descrição**:
+- **Nova dependência**: `github.com/jackc/pgx/v5` **v5.7.4** (fixada; última com
+  `go 1.21`), via `database/sql` — registro completo com alternativas no CHANGELOG
+- **Novo pacote `internal/db`**: `ConfigFromEnv`/`Open` (pool + ping 5s) e
+  `ApplyMigrations` (runner `go:embed`, tx por migração, tabela `schema_migrations`);
+  migrações `001_initial.sql` (movido, idempotente) + `002_align_models.sql` (novo)
+- **`internal/user`**: interfaces `UserStore` + `PGUserStore`/`MemoryUserStore`;
+  `UserService` recebe o store por injeção (DIP) mantendo validações/erros PT-BR/UUID
+- **`internal/channel`**: `ChannelStore` + `PGChannelStore`/`MemoryChannelStore`;
+  capacidade transacional (join concorrente não estoura 10), `user_count` computado
+  por `COUNT(*)`, `ListNearby` com bounding-box; service sem `locationService`,
+  `generateChannelID` agora UUID
+- **`cmd/server/main.go`**: abre conexão e aplica migrações no boot (falha rápida)
+- **`scripts/test-backend.ps1`**: WS atualizado para `/ws/audio/?token=` (script
+  obsoleto desde 11/10 — não era regressão)
+
+**Verificação**:
+- `go build` + `go vet` + `go test ./...` verdes; teste de integração PG
+  (`RADIOPX_TEST_DB=1`) PASS; script e2e **28/28**
+- Prova de persistência: conta criada → reinício do servidor → login **200**
+  (linha confirmada via psql); banco limpo ao final
+- Detalhes completos em `CHANGELOG.md`
+
+**Observações abertas**:
+- Localização segue em memória e áudio nunca é persistido (escopo aprovado)
+- Fase 0 (higiene do repo) está só na `prototype` (`37adeef`) — decidir na merge
+- Docs (`banco-de-dados.md`, `requisitos.md` RNF06, `decisoes.md` DEC-012+) ficam
+  para a Fase 4
+
+---
 
 **11/10/2026 - Segunda revisão do login: bypass do rate limit, UUIDs e limpeza de sessão**
 
@@ -381,25 +426,25 @@ Estes itens **não** serão implementados na v1. O protótipo roda em memória e
 
 ## Próxima Tarefa
 
-**Projeto Completo - Todas as phases implementadas**
+**Plano aprovado — Fases 0 e 1 concluídas; pendentes 2, 3 e 4**
 
-### Próximos Passos Opcionais
+### Próximas Fases
 
-1. Executar testes end-to-end completos
-2. Configurar ambiente de produção
-3. Implementar monitoramento e logs
-4. Configurar deploy automatizado
+1. **Fase 2 — Expor o backend via ngrok** (fim do Problema Conhecido nº 4)
+2. **Fase 3 — Tela para colar a URL do servidor no app** (exige novo RNF06 em `docs/requisitos.md`)
+3. **Fase 4 — Documentação**: `docs/banco-de-dados.md` (schema 002), `docs/decisoes.md`
+   (DEC-012+), `docs/requisitos.md` (RNF06), `PROJECT_STATE.md`/`README.md` finais
 
 ---
 
 ## Problemas Conhecidos
 
-1. **Distância dos canais nunca aparece** — `backend/internal/channel/model.go`: a struct `Channel` não possui campo `distance`. `GetNearbyChannels` calcula a distância apenas para ordenar e nunca a serializa, então `ChannelModel.distance` é sempre `null` e o card de canal não renderiza a linha de distância (channels_screen.dart). Correção exige adicionar o campo ao modelo e popular no handler.
+1. ~~**Distância dos canais nunca aparece**~~ — **Resolvido (backend, `feature-login`)**: `Channel` agora tem `distance,omitempty` serializado e `GetNearbyChannels` popula o campo; o frontend já parseia e renderiza (`channel_model.dart`, `channels_screen.dart`). Resta validação em campo.
 2. **Estado das telas perdido ao trocar de aba** — `frontend/lib/app.dart` monta a lista de telas dentro do `build` (`body: _screens[_currentIndex]`), então o `State` é destruído e recriado a cada troca de aba. Não afeta mais a atualização da lista de canais (que agora é por polling), mas faz scroll e aba interna voltarem ao padrão. Correção sugerida: `IndexedStack` + atualização explícita ao selecionar a aba.
 3. **Validação em campo pendente da correção de instância única** — a mudança no manifesto (`taskAffinity` removido, `singleTask`) foi conferida no APK gerado via `aapt2`, mas o comportamento no aparelho ainda precisa ser validado: tocar no ícone do launcher 3-4 vezes com o app em background deve retomar na mesma tela e manter 1 entrada no recents. Se o fluxo "sair do canal" (engrenagem → "Sair do Canal") continuar falhando depois disso, o próximo passo é expor um botão visível de sair na tela de voz — hoje ele está 2 níveis abaixo de um ícone de engrenagem.
 4. **IP do servidor embutido no APK fica obsoleto a cada troca de DHCP** — `API_BASE_URL` entra no binário pelo `--dart-define` do build, e o endereço da máquina oscila entre `172.16.158.222` e `10.201.108.96` (histórico: 22/09 → 04/10 → 06/10), quebrando o APK a cada troca. Mitigação aplicada em 06/10/2026: timeout de 10s + mensagem clara de erro (antes era spinner infinito). Correção real exige reserva DHCP/IP estático no roteador (fora do repo) ou URL editável em runtime (esta exige RF/RNF novo em `docs/requisitos.md`).
 5. **Validação em campo pendente do timeout/reconexão** — a detecção de falha de handshake do WebSocket foi conferida na fonte do `web_socket_channel 2.4.5` e no código, mas não em aparelho: com o backend parado, entrar num canal deve exibir a mensagem de erro em ~10s e a tela de voz deve passar por 5 tentativas com backoff até o botão "Tentar novamente". Em web esse comportamento não é garantido (o `ready` lá é stub).
-6. **Backend não usa PostgreSQL — tudo é em memória** — `internal/user/service.go`, `internal/channel/service.go` e `internal/location/service.go` guardam os dados em `map` protegidos por `sync.RWMutex`; não existe `database/sql`, pgx ou gorm em lugar nenhum do código. Isso **diverge** de `docs/decisoes.md` (DEC-001) e `docs/banco-de-dados.md`, que definem PostgreSQL 14+ como banco principal. Consequência prática: reiniciar o backend zera usuários, canais e localizações, então as contas de teste precisam ser recriadas a cada reinício. Correção exige implementar a persistência já prevista na documentação.
+6. ~~**Backend não usa PostgreSQL — tudo é em memória**~~ — **Resolvido em 20/10/2026 (Fase 1)**: pacote `internal/db` (config `DB_*`, `Open`, runner de migrações) + `PGUserStore`/`PGChannelStore` com `jackc/pgx/v5` v5.7.4; `001_initial.sql` movido para `internal/db/migrations/` e alinhado por `002_align_models.sql`. Persistem `users`, `channels` e `user_channels`; localização segue em memória e áudio nunca é gravado. Contas sobrevivem a reinícios (login 200 após restart verificado).
 7. **`setState` logo após `Navigator.pop` no salvamento de perfil** — em `profile_screen.dart`, o `finally { setState(...) }` de `_saveProfile` executa logo após o `pop` do caminho de sucesso. Hoje funciona porque a bottom sheet ainda está na animação de saída, mas é frágil: se a animação mudar, pode virar `setState() called after dispose()`.
 8. **WebSocket agora exige JWT e quebra clientes antigos** — desde 11/10/2026 o endpoint `/ws/audio/` exige `?token=<access JWT>` (validado por `webSocketAuthMiddleware`, com o `user_id` forçado ao ID do token). APKs compilados antes desta mudança deixam de conectar até serem recompilados. Mitigação: `AuthService.getValidToken()` renova o token antes de conectar. Validação em campo pendente.
 
@@ -411,6 +456,7 @@ Estes itens **não** serão implementados na v1. O protótipo roda em memória e
 
 - Go 1.21+
 - PostgreSQL 14+
+- `github.com/jackc/pgx/v5` v5.7.4 (driver PostgreSQL, adicionado em 20/10/2026)
 - Redis (opcional, para cache)
 
 ### Frontend
@@ -483,9 +529,9 @@ Estes itens **não** serão implementados na v1. O protótipo roda em memória e
 
 ## Última Atualização
 
-**Data**: 11/10/2026
+**Data**: 20/10/2026
 
-**Hora**: 2026-10-11
+**Hora**: 2026-10-20
 
 **Por**: OpenCode (assistente AI)
 

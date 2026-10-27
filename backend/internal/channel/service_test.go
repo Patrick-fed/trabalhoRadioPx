@@ -3,13 +3,10 @@ package channel
 import (
 	"fmt"
 	"testing"
-
-	"github.com/radiopx/backend/internal/location"
 )
 
 func TestChannelService_CreateChannel(t *testing.T) {
-	locationService := location.NewLocationService()
-	service := NewChannelService(locationService)
+	service := NewChannelService(NewMemoryChannelStore())
 
 	req := &CreateChannelRequest{
 		Name:      "Test Channel",
@@ -31,8 +28,7 @@ func TestChannelService_CreateChannel(t *testing.T) {
 }
 
 func TestChannelService_JoinChannel(t *testing.T) {
-	locationService := location.NewLocationService()
-	service := NewChannelService(locationService)
+	service := NewChannelService(NewMemoryChannelStore())
 
 	channel, _ := service.CreateChannel("user1", &CreateChannelRequest{
 		Name:      "Test Channel",
@@ -52,8 +48,7 @@ func TestChannelService_JoinChannel(t *testing.T) {
 }
 
 func TestChannelService_JoinChannel_AlreadyInChannel(t *testing.T) {
-	locationService := location.NewLocationService()
-	service := NewChannelService(locationService)
+	service := NewChannelService(NewMemoryChannelStore())
 
 	channel, _ := service.CreateChannel("user1", &CreateChannelRequest{
 		Name:      "Test Channel",
@@ -70,8 +65,7 @@ func TestChannelService_JoinChannel_AlreadyInChannel(t *testing.T) {
 }
 
 func TestChannelService_LeaveChannel(t *testing.T) {
-	locationService := location.NewLocationService()
-	service := NewChannelService(locationService)
+	service := NewChannelService(NewMemoryChannelStore())
 
 	channel, _ := service.CreateChannel("user1", &CreateChannelRequest{
 		Name:      "Test Channel",
@@ -93,8 +87,7 @@ func TestChannelService_LeaveChannel(t *testing.T) {
 }
 
 func TestChannelService_ChannelFull(t *testing.T) {
-	locationService := location.NewLocationService()
-	service := NewChannelService(locationService)
+	service := NewChannelService(NewMemoryChannelStore())
 
 	channel, _ := service.CreateChannel("user1", &CreateChannelRequest{
 		Name:      "Test Channel",
@@ -121,8 +114,7 @@ func TestChannelService_ChannelFull(t *testing.T) {
 }
 
 func TestChannelService_GetNearbyChannels(t *testing.T) {
-	locationService := location.NewLocationService()
-	service := NewChannelService(locationService)
+	service := NewChannelService(NewMemoryChannelStore())
 
 	service.CreateChannel("user1", &CreateChannelRequest{
 		Name:      "Channel 1",
@@ -148,8 +140,7 @@ func TestChannelService_GetNearbyChannels(t *testing.T) {
 }
 
 func TestChannelService_MaxVisibleChannels(t *testing.T) {
-	locationService := location.NewLocationService()
-	service := NewChannelService(locationService)
+	service := NewChannelService(NewMemoryChannelStore())
 
 	for i := 0; i < 20; i++ {
 		service.CreateChannel("user"+string(rune('0'+i)), &CreateChannelRequest{

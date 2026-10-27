@@ -192,8 +192,8 @@ if ($channelId) {
   $wsBase = $BaseUrl -replace '^http', 'ws'
   $wsA = $null; $wsB = $null
   try {
-    $wsA = New-Ws "$wsBase/ws/audio?channel=$channelId&user_id=$($userA.id)"
-    $wsB = New-Ws "$wsBase/ws/audio?channel=$channelId&user_id=$($rB.user.id)"
+    $wsA = New-Ws "$wsBase/ws/audio/?channel=$channelId&token=$([uri]::EscapeDataString($tokenA))"
+    $wsB = New-Ws "$wsBase/ws/audio/?channel=$channelId&token=$([uri]::EscapeDataString($tokenB))"
     Check "WS: A e B conectados ao canal" ($null -ne $wsA -and $null -ne $wsB)
 
     $sampleB64 = "QUJD" # bytes de exemplo (3 bytes)

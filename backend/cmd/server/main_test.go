@@ -15,7 +15,7 @@ import (
 const testSecret = "test-secret-key-that-is-long-enough-for-jwt"
 
 func newTestAuthEnv() (*user.UserService, *auth.AuthService) {
-	userService := user.NewUserService()
+	userService := user.NewUserService(user.NewMemoryUserStore())
 	authAdapter := &authUserServiceAdapter{svc: userService}
 	authService := auth.NewAuthService(testSecret, authAdapter)
 	return userService, authService

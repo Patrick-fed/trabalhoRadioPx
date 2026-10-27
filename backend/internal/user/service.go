@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net/mail"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -32,21 +31,18 @@ func validEmail(email string) bool {
 	return err == nil && addr.Address == email
 }
 
+// UserService holds user business rules (validation, normalization, bcrypt).
+// Persistence goes through UserStore: PostgreSQL in production, in-memory for
+// the unit tests. Concurrency control lives in the store.
 type UserService struct {
-	mu    sync.RWMutex
-	users map[string]*User
+	store UserStore
 }
 
-func NewUserService() *UserService {
-	return &UserService{
-		users: make(map[string]*User),
-	}
+func NewUserService(store UserStore) *UserService {
+	return &UserService{store: store}
 }
 
 func (s *UserService) CreateUser(req *CreateUserRequest) (*User, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	req.Email = normalizeEmail(req.Email)
 	if req.Email == "" {
 		return nil, ErrEmailRequired
@@ -59,12 +55,6 @@ func (s *UserService) CreateUser(req *CreateUserRequest) (*User, error) {
 	}
 	if len(req.Password) < minPasswordLength {
 		return nil, ErrPasswordTooShort
-	}
-
-	for _, user := range s.users {
-		if user.Email == req.Email {
-			return nil, ErrUserAlreadyExists
-		}
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
@@ -84,44 +74,25 @@ func (s *UserService) CreateUser(req *CreateUserRequest) (*User, error) {
 		UpdatedAt: now,
 	}
 
-	s.users[user.ID] = user
+	if err := s.store.Create(user); err != nil {
+		return nil, err
+	}
 
 	return user, nil
 }
 
 func (s *UserService) GetUser(userID string) (*User, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	user, exists := s.users[userID]
-	if !exists {
-		return nil, ErrUserNotFound
-	}
-
-	return user, nil
+	return s.store.GetByID(userID)
 }
 
 func (s *UserService) GetUserByEmail(email string) (*User, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	email = normalizeEmail(email)
-	for _, user := range s.users {
-		if user.Email == email {
-			return user, nil
-		}
-	}
-
-	return nil, ErrUserNotFound
+	return s.store.GetByEmail(normalizeEmail(email))
 }
 
 func (s *UserService) UpdateUser(userID string, req *UpdateUserRequest) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	user, exists := s.users[userID]
-	if !exists {
-		return ErrUserNotFound
+	user, err := s.store.GetByID(userID)
+	if err != nil {
+		return err
 	}
 
 	if req.Name != "" {
@@ -135,42 +106,20 @@ func (s *UserService) UpdateUser(userID string, req *UpdateUserRequest) error {
 	}
 	user.UpdatedAt = time.Now()
 
-	return nil
+	return s.store.Update(user)
 }
 
 func (s *UserService) DeleteUser(userID string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	_, exists := s.users[userID]
-	if !exists {
-		return ErrUserNotFound
-	}
-
-	delete(s.users, userID)
-
-	return nil
+	return s.store.Delete(userID)
 }
 
 func (s *UserService) Authenticate(email, password string) (*User, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	email = normalizeEmail(email)
-	var foundUser *User
-	for _, user := range s.users {
-		if user.Email == email {
-			foundUser = user
-			break
-		}
-	}
-
-	if foundUser == nil {
+	foundUser, err := s.store.GetByEmail(normalizeEmail(email))
+	if err != nil {
 		return nil, ErrInvalidCredentials
 	}
 
-	err := bcrypt.CompareHashAndPassword([]byte(foundUser.Password), []byte(password))
-	if err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(foundUser.Password), []byte(password)); err != nil {
 		return nil, ErrInvalidCredentials
 	}
 
@@ -178,16 +127,12 @@ func (s *UserService) Authenticate(email, password string) (*User, error) {
 }
 
 func (s *UserService) ChangePassword(userID, oldPassword, newPassword string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	user, exists := s.users[userID]
-	if !exists {
-		return ErrUserNotFound
+	user, err := s.store.GetByID(userID)
+	if err != nil {
+		return err
 	}
 
-	err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(oldPassword))
-	if err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(oldPassword)); err != nil {
 		return ErrInvalidCredentials
 	}
 
@@ -206,18 +151,13 @@ func (s *UserService) ChangePassword(userID, oldPassword, newPassword string) er
 	user.Password = string(hashedPassword)
 	user.UpdatedAt = time.Now()
 
-	return nil
+	return s.store.Update(user)
 }
 
 func (s *UserService) CreateOAuthUser(email, name, provider, providerID string) (*User, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	email = normalizeEmail(email)
-	for _, user := range s.users {
-		if user.Email == email && user.Provider == provider {
-			return user, nil
-		}
+	if existing, err := s.store.GetByEmailAndProvider(email, provider); err == nil {
+		return existing, nil
 	}
 
 	now := time.Now()
@@ -232,21 +172,15 @@ func (s *UserService) CreateOAuthUser(email, name, provider, providerID string) 
 		UpdatedAt:  now,
 	}
 
-	s.users[user.ID] = user
+	if err := s.store.Create(user); err != nil {
+		return nil, err
+	}
 
 	return user, nil
 }
 
-func (s *UserService) ListUsers() []*User {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	users := make([]*User, 0, len(s.users))
-	for _, user := range s.users {
-		users = append(users, user)
-	}
-
-	return users
+func (s *UserService) ListUsers() ([]*User, error) {
+	return s.store.List()
 }
 
 func generateUserID() string {

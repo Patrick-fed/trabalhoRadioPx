@@ -13,7 +13,7 @@ import (
 
 	"github.com/radiopx/backend/internal/auth"
 	"github.com/radiopx/backend/internal/channel"
-	"github.com/radiopx/backend/internal/location"
+	"github.com/radiopx/backend/internal/db"
 	"github.com/radiopx/backend/internal/middleware"
 	"github.com/radiopx/backend/internal/user"
 	"github.com/radiopx/backend/internal/voice"
@@ -83,9 +83,21 @@ func main() {
 		log.Println("WARNING: JWT_SECRET is not set; using an insecure development secret")
 	}
 
-	userService := user.NewUserService()
-	locationService := location.NewLocationService()
-	channelService := channel.NewChannelService(locationService)
+	database, err := db.Open(db.ConfigFromEnv())
+	if err != nil {
+		log.Fatalf("Database: %v", err)
+	}
+	defer database.Close()
+
+	if err := db.ApplyMigrations(database); err != nil {
+		log.Fatalf("Migrations: %v", err)
+	}
+	log.Println("Database connected, migrations applied")
+
+	userStore := user.NewPGUserStore(database)
+	userService := user.NewUserService(userStore)
+	channelStore := channel.NewPGChannelStore(database)
+	channelService := channel.NewChannelService(channelStore)
 	authAdapter := &authUserServiceAdapter{svc: userService}
 	authService := auth.NewAuthService(secret, authAdapter)
 	voiceService := voice.NewVoiceService()

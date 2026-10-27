@@ -2,10 +2,9 @@ package channel
 
 import (
 	"errors"
-	"fmt"
-	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/radiopx/backend/internal/location"
 )
 
@@ -23,27 +22,20 @@ var (
 	ErrMaxChannelsReached   = errors.New("maximum visible channels reached")
 )
 
+// ChannelService holds channel business rules. Persistence goes through
+// ChannelStore (PostgreSQL in production, in-memory for the unit tests);
+// UserCount is always computed by the store, never incremented here.
 type ChannelService struct {
-	mu              sync.RWMutex
-	channels        map[string]*Channel
-	channelUsers    map[string][]string
-	locationService *location.LocationService
+	store ChannelStore
 }
 
-func NewChannelService(locationService *location.LocationService) *ChannelService {
-	return &ChannelService{
-		channels:        make(map[string]*Channel),
-		channelUsers:    make(map[string][]string),
-		locationService: locationService,
-	}
+func NewChannelService(store ChannelStore) *ChannelService {
+	return &ChannelService{store: store}
 }
 
 func (s *ChannelService) CreateChannel(userID string, req *CreateChannelRequest) (*Channel, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	now := time.Now()
-	channel := &Channel{
+	ch := &Channel{
 		ID:          generateChannelID(),
 		Name:        req.Name,
 		Description: req.Description,
@@ -57,171 +49,75 @@ func (s *ChannelService) CreateChannel(userID string, req *CreateChannelRequest)
 		UpdatedAt:   now,
 	}
 
-	s.channels[channel.ID] = channel
-	s.channelUsers[channel.ID] = []string{userID}
+	if err := s.store.Create(ch); err != nil {
+		return nil, err
+	}
 
-	s.locationService.UpdateChannelLocation(channel.ID, &location.Location{
-		ID:        channel.ID,
-		Latitude:  channel.Latitude,
-		Longitude: channel.Longitude,
-		Timestamp: now,
-		UpdatedAt: now,
-	})
-
-	return channel, nil
+	return ch, nil
 }
 
 func (s *ChannelService) GetChannel(channelID string) (*Channel, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	channel, exists := s.channels[channelID]
-	if !exists {
-		return nil, ErrChannelNotFound
-	}
-
-	return channel, nil
+	return s.store.GetByID(channelID)
 }
 
 func (s *ChannelService) JoinChannel(userID, channelID string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	channel, exists := s.channels[channelID]
-	if !exists {
-		return ErrChannelNotFound
+	if _, err := s.store.GetByID(channelID); err != nil {
+		return err
 	}
-
-	if channel.UserCount >= channel.MaxUsers {
-		return ErrChannelFull
-	}
-
-	users := s.channelUsers[channelID]
-	for _, u := range users {
-		if u == userID {
-			return ErrUserAlreadyInChannel
-		}
-	}
-
-	s.channelUsers[channelID] = append(users, userID)
-	channel.UserCount++
-	channel.IsAvailable = channel.UserCount < channel.MaxUsers
-	channel.UpdatedAt = time.Now()
-
-	return nil
+	return s.store.AddMember(channelID, userID)
 }
 
 func (s *ChannelService) JoinChannelOrCreate(userID string, req *CreateChannelRequest) (*Channel, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	const joinRadiusKm = 10.0
 
-	nearbyChannels := make([]*Channel, 0)
-	for _, channel := range s.channels {
+	candidates, err := s.store.ListNearby(req.Latitude, req.Longitude, joinRadiusKm)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, ch := range candidates {
 		distance := location.CalculateDistance(
 			req.Latitude, req.Longitude,
-			channel.Latitude, channel.Longitude,
+			ch.Latitude, ch.Longitude,
 		)
-		if distance <= 10.0 && channel.IsAvailable {
-			nearbyChannels = append(nearbyChannels, channel)
+		if distance > joinRadiusKm || !ch.IsAvailable {
+			continue
 		}
-	}
 
-	if len(nearbyChannels) > 0 {
-		for _, channel := range nearbyChannels {
-			users := s.channelUsers[channel.ID]
-			alreadyInChannel := false
-			for _, u := range users {
-				if u == userID {
-					alreadyInChannel = true
-					break
-				}
-			}
-
-			if !alreadyInChannel && channel.UserCount < channel.MaxUsers {
-				s.channelUsers[channel.ID] = append(users, userID)
-				channel.UserCount++
-				channel.IsAvailable = channel.UserCount < channel.MaxUsers
-				channel.UpdatedAt = time.Now()
-				return channel, nil
-			}
+		isMember, err := s.store.IsMember(ch.ID, userID)
+		if err != nil || isMember {
+			continue
 		}
+
+		if err := s.store.AddMember(ch.ID, userID); err != nil {
+			continue
+		}
+		return s.store.GetByID(ch.ID)
 	}
 
-	now := time.Now()
-	channel := &Channel{
-		ID:          generateChannelID(),
-		Name:        req.Name,
-		Description: req.Description,
-		Latitude:    req.Latitude,
-		Longitude:   req.Longitude,
-		MaxUsers:    MaxUsersPerChannel,
-		UserCount:   1,
-		IsAvailable: true,
-		CreatedBy:   userID,
-		CreatedAt:   now,
-		UpdatedAt:   now,
-	}
-
-	s.channels[channel.ID] = channel
-	s.channelUsers[channel.ID] = []string{userID}
-
-	s.locationService.UpdateChannelLocation(channel.ID, &location.Location{
-		ID:        channel.ID,
-		Latitude:  channel.Latitude,
-		Longitude: channel.Longitude,
-		Timestamp: now,
-		UpdatedAt: now,
-	})
-
-	return channel, nil
+	return s.CreateChannel(userID, req)
 }
 
 func (s *ChannelService) LeaveChannel(userID, channelID string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	channel, exists := s.channels[channelID]
-	if !exists {
-		return ErrChannelNotFound
-	}
-
-	users := s.channelUsers[channelID]
-	found := false
-	for i, u := range users {
-		if u == userID {
-			s.channelUsers[channelID] = append(users[:i], users[i+1:]...)
-			found = true
-			break
-		}
-	}
-
-	if !found {
-		return ErrUserNotInChannel
-	}
-
-	channel.UserCount = len(s.channelUsers[channelID])
-	channel.IsAvailable = channel.UserCount < channel.MaxUsers
-	channel.UpdatedAt = time.Now()
-
-	return nil
+	return s.store.RemoveMember(channelID, userID)
 }
 
 func (s *ChannelService) GetNearbyChannels(latitude, longitude, radiusKm float64) ([]*Channel, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	candidates, err := s.store.ListNearby(latitude, longitude, radiusKm)
+	if err != nil {
+		return nil, err
+	}
 
-	nearbyChannels := make([]*Channel, 0)
-
-	for _, channel := range s.channels {
+	nearbyChannels := make([]*Channel, 0, len(candidates))
+	for _, ch := range candidates {
 		distance := location.CalculateDistance(
 			latitude, longitude,
-			channel.Latitude, channel.Longitude,
+			ch.Latitude, ch.Longitude,
 		)
-
 		if distance <= radiusKm {
-			channelCopy := *channel
-			channelCopy.Distance = distance
-			nearbyChannels = append(nearbyChannels, &channelCopy)
+			chCopy := *ch
+			chCopy.Distance = distance
+			nearbyChannels = append(nearbyChannels, &chCopy)
 		}
 	}
 
@@ -234,87 +130,50 @@ func (s *ChannelService) GetNearbyChannels(latitude, longitude, radiusKm float64
 	return nearbyChannels, nil
 }
 
-func (s *ChannelService) GetUserChannels(userID string) []*Channel {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	userChannels := make([]*Channel, 0)
-
-	for channelID, users := range s.channelUsers {
-		for _, u := range users {
-			if u == userID {
-				if channel, exists := s.channels[channelID]; exists {
-					channelCopy := *channel
-					userChannels = append(userChannels, &channelCopy)
-				}
-				break
-			}
-		}
-	}
-
-	return userChannels
+func (s *ChannelService) GetUserChannels(userID string) ([]*Channel, error) {
+	return s.store.ListUserChannels(userID)
 }
 
 func (s *ChannelService) GetChannelUsers(channelID string) ([]string, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	users, exists := s.channelUsers[channelID]
-	if !exists {
-		return nil, ErrChannelNotFound
-	}
-
-	usersCopy := make([]string, len(users))
-	copy(usersCopy, users)
-
-	return usersCopy, nil
+	return s.store.ListMembers(channelID)
 }
 
 func (s *ChannelService) UpdateChannel(channelID, userID string, req *UpdateChannelRequest) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	channel, exists := s.channels[channelID]
-	if !exists {
-		return ErrChannelNotFound
+	ch, err := s.store.GetByID(channelID)
+	if err != nil {
+		return err
 	}
 
-	if channel.CreatedBy != userID {
+	if ch.CreatedBy != userID {
 		return errors.New("only channel creator can update")
 	}
 
 	if req.Name != "" {
-		channel.Name = req.Name
+		ch.Name = req.Name
 	}
 	if req.Description != "" {
-		channel.Description = req.Description
+		ch.Description = req.Description
 	}
-	channel.UpdatedAt = time.Now()
+	ch.UpdatedAt = time.Now()
 
-	return nil
+	return s.store.Update(ch)
 }
 
 func (s *ChannelService) DeleteChannel(channelID, userID string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	channel, exists := s.channels[channelID]
-	if !exists {
-		return ErrChannelNotFound
+	ch, err := s.store.GetByID(channelID)
+	if err != nil {
+		return err
 	}
 
-	if channel.CreatedBy != userID {
+	if ch.CreatedBy != userID {
 		return errors.New("only channel creator can delete")
 	}
 
-	delete(s.channels, channelID)
-	delete(s.channelUsers, channelID)
-
-	return nil
+	return s.store.Delete(channelID)
 }
 
 func generateChannelID() string {
-	return fmt.Sprintf("%d", time.Now().UnixNano())
+	return uuid.NewString()
 }
 
 func sortChannelsByDistance(channels []*Channel, userLat, userLng float64) {

@@ -7,7 +7,7 @@ import (
 )
 
 func TestUserService_CreateUser(t *testing.T) {
-	service := NewUserService()
+	service := NewUserService(NewMemoryUserStore())
 
 	req := &CreateUserRequest{
 		Email:    "test@example.com",
@@ -33,7 +33,7 @@ func TestUserService_CreateUser(t *testing.T) {
 }
 
 func TestUserService_CreateUser_DuplicateEmail(t *testing.T) {
-	service := NewUserService()
+	service := NewUserService(NewMemoryUserStore())
 
 	req := &CreateUserRequest{
 		Email:    "test@example.com",
@@ -50,7 +50,7 @@ func TestUserService_CreateUser_DuplicateEmail(t *testing.T) {
 }
 
 func TestUserService_Authenticate(t *testing.T) {
-	service := NewUserService()
+	service := NewUserService(NewMemoryUserStore())
 
 	req := &CreateUserRequest{
 		Email:    "test@example.com",
@@ -71,7 +71,7 @@ func TestUserService_Authenticate(t *testing.T) {
 }
 
 func TestUserService_Authenticate_WrongPassword(t *testing.T) {
-	service := NewUserService()
+	service := NewUserService(NewMemoryUserStore())
 
 	req := &CreateUserRequest{
 		Email:    "test@example.com",
@@ -88,7 +88,7 @@ func TestUserService_Authenticate_WrongPassword(t *testing.T) {
 }
 
 func TestUserService_Authenticate_UserNotFound(t *testing.T) {
-	service := NewUserService()
+	service := NewUserService(NewMemoryUserStore())
 
 	_, err := service.Authenticate("nonexistent@example.com", "password123")
 	if err != ErrInvalidCredentials {
@@ -97,7 +97,7 @@ func TestUserService_Authenticate_UserNotFound(t *testing.T) {
 }
 
 func TestUserService_UpdateUser(t *testing.T) {
-	service := NewUserService()
+	service := NewUserService(NewMemoryUserStore())
 
 	req := &CreateUserRequest{
 		Email:    "test@example.com",
@@ -122,7 +122,7 @@ func TestUserService_UpdateUser(t *testing.T) {
 }
 
 func TestUserService_DeleteUser(t *testing.T) {
-	service := NewUserService()
+	service := NewUserService(NewMemoryUserStore())
 
 	req := &CreateUserRequest{
 		Email:    "test@example.com",
@@ -144,7 +144,7 @@ func TestUserService_DeleteUser(t *testing.T) {
 }
 
 func TestUserService_ChangePassword(t *testing.T) {
-	service := NewUserService()
+	service := NewUserService(NewMemoryUserStore())
 
 	req := &CreateUserRequest{
 		Email:    "test@example.com",
@@ -171,7 +171,7 @@ func TestUserService_ChangePassword(t *testing.T) {
 }
 
 func TestUserService_ChangePassword_TooShort(t *testing.T) {
-	service := NewUserService()
+	service := NewUserService(NewMemoryUserStore())
 
 	user, _ := service.CreateUser(&CreateUserRequest{
 		Email:    "test@example.com",
@@ -191,7 +191,7 @@ func TestUserService_ChangePassword_TooShort(t *testing.T) {
 }
 
 func TestUserService_ChangePassword_WrongOldPassword(t *testing.T) {
-	service := NewUserService()
+	service := NewUserService(NewMemoryUserStore())
 
 	user, _ := service.CreateUser(&CreateUserRequest{
 		Email:    "test@example.com",
@@ -206,7 +206,7 @@ func TestUserService_ChangePassword_WrongOldPassword(t *testing.T) {
 }
 
 func TestUserService_CreateUser_GeneratesUniqueUUIDs(t *testing.T) {
-	service := NewUserService()
+	service := NewUserService(NewMemoryUserStore())
 
 	first, err := service.CreateUser(&CreateUserRequest{
 		Email:    "first@example.com",

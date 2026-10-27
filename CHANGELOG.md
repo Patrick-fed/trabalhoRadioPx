@@ -4,6 +4,108 @@ Este documento registra todas as alterações significativas do projeto.
 
 ---
 
+## 20/10/2026 - Fase 1: persistência PostgreSQL (fim do estado em memória)
+
+### Contexto
+
+Fase 1 do plano aprovado pelo autor (fases: 0 higiene do repo, 1 persistência, 2 ngrok,
+3 tela de URL no app, 4 docs). Resolve o **Problema Conhecido nº 6** e a lacuna
+"DEC-001 / FR-013 — PostgreSQL". Escopo aprovado: apenas `users`, `channels` e
+`user_channels` são persistidos; **localização continua em memória** e **áudio nunca é
+persistido** (regra crítica de privacidade). Base: branch `feature-login`.
+
+### Dependência nova (política §11 do AGENTS.md)
+
+- **`github.com/jackc/pgx/v5` v5.7.4** (fixada) — driver PostgreSQL via adaptador
+  `database/sql` (`pgx/v5/stdlib`) + mapeamento de erro `23505` (`pgconn`).
+  Finalidade: persistir usuários/canais com transações e `ON CONFLICT`.
+  Alternativas consideradas: **GORM** ( ORM completo, mais pesado que o necessário);
+  **lib/pq** (sem manutenção ativa); **pgx puro** (exigiria trocar `database/sql` e
+  refazer testes). Versão **v5.7.4** escolhida porque é a última que declara `go 1.21`,
+  compatível com o diretivo do `go.mod` sem bump (v5.7.5+ exige go 1.23).
+- Transitivas ajustadas pelo `go mod tidy`: `golang.org/x/crypto` 0.17.0 → **0.31.0**,
+  `x/net` → **0.21.0**, `x/text` → **0.21.0**, `x/sync` → **0.10.0** (todas indiretas).
+  `github.com/google/uuid` segue direta (IDs).
+
+### Alterações
+
+**Backend — novo pacote `internal/db`**
+
+- `db.go` — `Config`/`ConfigFromEnv()` (variáveis `DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD/DB_SSLMODE`,
+  com defaults), `Open()` com pool (10 abertas/5 ociosas) e `Ping` com timeout de 5s.
+- `migrate.go` — runner de migrações próprio: `//go:embed migrations/*.sql`, ordem
+  lexicográfica, uma transação por migração, controle em tabela `schema_migrations`.
+- `migrations/001_initial.sql` — movido de `backend/migrations/` e tornado idempotente
+  (`IF NOT EXISTS`) para poder ser aplicado em banco já preparado via psql.
+- `migrations/002_align_models.sql` (novo) — alinha schema ao modelo real: `users.cpf`
+  deixa de ser NOT NULL (RF01 prevê mas o app não coleta), colunas `provider`,
+  `provider_id`, `is_active`, `avatar`; `channels` ganha `description`, `latitude`,
+  `longitude`, `created_by` (UUID FK) e `updated_at` + índice `idx_channels_location`.
+
+**Backend — módulo `internal/user`**
+
+- `repository.go` (novo) — interface `UserStore` (fronteira de persistência) +
+  `PGUserStore` (CRUD, unique violation 23505 → `ErrUserAlreadyExists`).
+- `memory_store.go` (novo) — `MemoryUserStore` para os testes unitários.
+- `service.go` — `UserService` agora depende de `UserStore` (DIP);
+  `NewUserService(store)`. **Todas as regras da `feature-login` preservadas**:
+  erros em PT-BR, `normalizeEmail`, `validEmail`, `minPasswordLength = 8`, UUIDs.
+
+**Backend — módulo `internal/channel`**
+
+- `repository.go` (novo) — interface `ChannelStore` + `PGChannelStore`: capacidade e
+  unicidade de membership aplicadas **transacionalmente** (`SELECT ... FOR UPDATE` +
+  `ON CONFLICT`, commit só se `count <= max_users` — joins concorrentes não
+  ultrapassam 10); `user_count` sempre computado via `COUNT(*)`, nunca armazenado;
+  `ListNearby` com pré-filtro por bounding-box (Haversine e ordenação ficam no service).
+- `memory_store.go` (novo) — `MemoryChannelStore` com a mesma semântica.
+- `service.go` — construtor trocou `locationService` por `ChannelStore`;
+  `generateChannelID` passou de `time.Now().UnixNano()` para UUID; campo `Distance`
+  (já existente na branch) continua populado pelo service.
+- `handler.go` — `HandleGetUserChannels` trata o novo erro de store.
+
+**Backend — `cmd/server/main.go`**
+
+- Abre a conexão (`db.Open`) e aplica migrações (`db.ApplyMigrations`) no boot,
+  com **falha rápida** (`log.Fatalf`) se o banco estiver inacessível; cria
+  `PGUserStore`/`PGChannelStore` e injeta nos services.
+
+**Scripts**
+
+- `scripts/test-backend.ps1` — seção WS corrigida para o contrato vigente desde
+  11/10 (`0b61791`): URL `/ws/audio/` com barra final (o ServeMux redireciona 301 e o
+  `ClientWebSocket` do .NET não segue redirect) e `?token=<JWT>` no lugar de
+  `user_id` (`webSocketAuthMiddleware` ignora `user_id` forjado). **O script estava
+  obsoleto desde 11/10** — a falha de WS era pré-existente, não regressão.
+
+### Motivo
+
+Requisito documentado desde o início (DEC-001, `docs/banco-de-dados.md`, AGENTS.md)
+que o código cumpria só em memória: reiniciar o backend zera usuários e canais.
+
+### Verificação
+
+- `go build ./...`, `go vet ./...` e `go test ./...` verdes (9 pacotes).
+- **Teste de integração novo** `internal/db/pg_integration_test.go` (opt-in via
+  `RADIOPX_TEST_DB=1`, senão `skip`): migração idempotente + CRUD de usuário +
+  duplicidade + autenticação + membership/capacidade/ownership contra o PostgreSQL real — **PASS**.
+- `scripts/test-backend.ps1` contra servidor local: **28/28 verdes** (inclui relay de
+  áudio via WebSocket com token).
+- **Prova de persistência**: conta criada → servidor reiniciado → login **200**;
+  linha confirmada por psql (UUID em `users`, `schema_migrations` com 001+002).
+- Dados de teste removidos após a verificação (banco de volta a 0 linhas).
+
+### Pendências / observações
+
+- Localização (`internal/location`) segue em memória (escopo aprovado).
+- Atualizações de docs ficam para a Fase 4: `docs/banco-de-dados.md` (schema 002),
+  `docs/requisitos.md` (novo RNF06 da tela de URL), `docs/decisoes.md` (DEC-012+).
+- A higiene da Fase 0 (`.gitignore` raiz, untrack de `server.exe`/APK, JWT rotacionado)
+  foi comitada apenas na `prototype` (`37adeef`); ao commitar esta fase na
+  `feature-login` decidir se ela é trazida para cá ou resolvida na merge.
+
+---
+
 ## 13/10/2026 - Reconciliação docs × código: registro de lacunas e escopo da v1
 
 ### Contexto

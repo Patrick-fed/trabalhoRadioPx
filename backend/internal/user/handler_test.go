@@ -9,7 +9,7 @@ import (
 )
 
 func TestUserHandler_HandleUpdateUserProfile(t *testing.T) {
-	service := NewUserService()
+	service := NewUserService(NewMemoryUserStore())
 	handler := NewUserHandler(service)
 
 	created, err := service.CreateUser(&CreateUserRequest{
@@ -65,7 +65,7 @@ func TestUserHandler_HandleUpdateUserProfile(t *testing.T) {
 }
 
 func TestUserHandler_HandleUpdateUserProfile_NotFound(t *testing.T) {
-	service := NewUserService()
+	service := NewUserService(NewMemoryUserStore())
 	handler := NewUserHandler(service)
 
 	req := httptest.NewRequest(
@@ -83,7 +83,7 @@ func TestUserHandler_HandleUpdateUserProfile_NotFound(t *testing.T) {
 }
 
 func TestUserHandler_HandleChangePassword_TooShort(t *testing.T) {
-	service := NewUserService()
+	service := NewUserService(NewMemoryUserStore())
 	handler := NewUserHandler(service)
 
 	created, err := service.CreateUser(&CreateUserRequest{
@@ -110,7 +110,7 @@ func TestUserHandler_HandleChangePassword_TooShort(t *testing.T) {
 }
 
 func TestUserHandler_HandleChangePassword_WrongOldPassword(t *testing.T) {
-	service := NewUserService()
+	service := NewUserService(NewMemoryUserStore())
 	handler := NewUserHandler(service)
 
 	created, err := service.CreateUser(&CreateUserRequest{

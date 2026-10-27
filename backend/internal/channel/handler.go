@@ -250,7 +250,11 @@ func (h *ChannelHandler) HandleGetUserChannels(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	channels := h.channelService.GetUserChannels(userID)
+	channels, err := h.channelService.GetUserChannels(userID)
+	if err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
