@@ -272,7 +272,10 @@ lib/
 - `GET /api/v1/channels` - Listar canais
 - `POST /api/v1/channels/join` - Entrar no canal
 - `POST /api/v1/channels/leave` - Sair do canal
-- `POST /api/v1/location/update` - Atualizar localização
+
+> Localização não tem endpoint próprio: o app envia as coordenadas do GPS nos
+> payloads da API de canais (criar/listar próximos). O backend calcula a
+> distância com `internal/location.CalculateDistance`.
 
 ### WebSocket (Tempo Real)
 

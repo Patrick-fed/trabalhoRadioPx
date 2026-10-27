@@ -4,6 +4,59 @@ Este documento registra todas as alterações significativas do projeto.
 
 ---
 
+## 27/10/2026 - Limpeza de órfãos pós-Fase 1 (pacote location e endpoint morto)
+
+### Contexto
+
+Auditoria após a Fase 1 (persistência PostgreSQL, 20/10) encontrou código que ficou
+sem consumidores: com o `ChannelService` deixando de usar o `LocationService`
+(injetado apenas para registrar a posição do canal), o pacote `internal/location`
+perdeu quase tudo, e o endpoint stub de localização continuava respondendo `200`
+sem efeito algum. Nenhuma funcionalidade em uso foi alterada.
+
+### Alterações
+
+**Backend — `internal/location` enxugado**
+
+- Novo `distance.go`: apenas `EarthRadiusKm` + `CalculateDistance` (Haversine),
+  o único símbolo ainda consumido (por `internal/channel/service.go`).
+- Novo `distance_test.go` com os 4 testes `TestCalculateDistance_*` (antes em
+  `service_test.go`).
+- **Removidos**: `service.go` (`LocationService` — `UpdateUserLocation`,
+  `FindNearbyChannels`, `GetUsersInRadius`), `handler.go` (`LocationHandler`,
+  nunca registrado em `main.go`) e `model.go` (`Location`, `LocationUpdate`,
+  `NearbyChannel`, `ProximityFilter`) — código morto desde a refatoração.
+
+**Backend — `cmd/server/main.go`**
+
+- Removido o stub `POST /api/v1/location/update`, que respondia `200
+  {"message":"Location updated"}` sem persistir nada. Verificado que **nenhum
+  consumidor real**: o `LocationService` do frontend usa apenas o Geolocator
+  local (envia lat/lng nos payloads de canais) e `scripts/test-backend.ps1`
+  não testava o endpoint.
+
+**Documentação**
+
+- `docs/arquitetura.md` — endpoint removido da tabela de rotas, com nota de
+  que a localização trafega na API de canais.
+- `docs/requisitos.md` — RF04 agora aponta `internal/channel/` (descoberta) +
+  `internal/location/` (distância).
+
+### Motivo
+
+Deixar o pacote e o endpoint órfãos após a Fase 1 convida a manutenção
+enganosa (quem lê acha que localização é persistida no backend). A remoção
+também tira do caminho a confusão entre o stub morto e o fluxo real de GPS.
+
+### Verificação
+
+- `go build ./...`, `go vet ./...` e `go test ./...` verdes.
+- Grep confirma zero referências restantes a `NewLocationService`,
+  `NewLocationHandler` e `location/update` no backend.
+- Frontend intocado.
+
+---
+
 ## 20/10/2026 - Fase 1: persistência PostgreSQL (fim do estado em memória)
 
 ### Contexto

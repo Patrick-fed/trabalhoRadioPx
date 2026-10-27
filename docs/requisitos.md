@@ -222,8 +222,8 @@ O sistema deve ordenar áudios:
 
 ### RF04 → Backend → Database → Frontend → Testes
 
-- **Backend**: `internal/location/`
-- **Database**: N/A (GPS do dispositivo)
+- **Backend**: `internal/channel/` (descoberta via `GetNearbyChannels`) + `internal/location/` (cálculo de distância)
+- **Database**: N/A (GPS do dispositivo; coordenadas trafegam na API de canais)
 - **Frontend**: `features/location/`
 - **Testes**: unit, integration
 

@@ -31,12 +31,11 @@ de e-mail duplicado no cadastro voltou a funcionar.
 
 ### Lacunas dentro do escopo v1 (a corrigir)
 
-- **RF03 — "apenas um usuário fala por vez" não é aplicado no fluxo real.**
-  `VoiceService.StartTransmission`/`StopTransmission` (`backend/internal/voice/service.go:34,59`)
-  existem mas **nunca são chamados**; `HandleStartTransmission`/`HandleStopTransmission`
-  (`backend/internal/voice/handler.go:61,86`) **não estão registrados** em `main.go`. O caminho do
-  WebSocket apenas repassa o áudio (`backend/pkg/websocket/client.go:137`), sem bloquear um segundo
-  transmissor.
+- ~~**RF03 — "apenas um usuário fala por vez" não é aplicado no fluxo real.**~~
+  **Resolvido na `feature-login` (commit `f8251e8`)**: o WebSocket passou a aplicar
+  `VoiceService.StartTransmission`/`StopTransmission` via `voiceGuard`
+  (`backend/pkg/websocket/client.go:165-172`) — um segundo transmissor no mesmo
+  canal é rejeitado. Resta validação em campo.
 
 - **RF06 / RNF04 — buffer de 30s e replay são código morto.**
   `backend/internal/voice/buffer_service.go` e `buffer_manager.go` só são instanciados em testes
@@ -180,6 +179,27 @@ Estes itens **não** serão implementados na v1. O protótipo roda em memória e
 ---
 
 ## Última Alteração
+
+**27/10/2026 - Limpeza de órfãos pós-Fase 1 (location e endpoint morto)**
+
+**Data**: 27/10/2026
+
+**Descrição**:
+- **`internal/location` enxugado** para só `distance.go` (`EarthRadiusKm` +
+  `CalculateDistance`, o único uso real via `internal/channel`); removidos
+  `LocationService`, `LocationHandler` (nunca registrado) e os modelos órfãos
+- **`POST /api/v1/location/update` removido** — stub que respondia 200 sem efeito;
+  o app usa Geolocator local e envia coordenadas na API de canais (verificado:
+  nenhum consumidor nem no frontend nem no `scripts/test-backend.ps1`)
+- **RF03 marcado como resolvido** na seção de lacunas (guard de um falante por
+  vez aplicado no WebSocket desde `f8251e8`)
+- Docs: `arquitetura.md` (endpoint fora da tabela) e `requisitos.md` (RF04)
+
+**Verificação**: `go build` + `go vet` + `go test ./...` verdes; grep sem
+referências a `NewLocationService`/`NewLocationHandler`/`location/update`;
+frontend intocado. Detalhes em `CHANGELOG.md`.
+
+---
 
 **20/10/2026 - Fase 1: persistência PostgreSQL (fim do estado em memória)**
 
@@ -529,9 +549,9 @@ Estes itens **não** serão implementados na v1. O protótipo roda em memória e
 
 ## Última Atualização
 
-**Data**: 20/10/2026
+**Data**: 27/10/2026
 
-**Hora**: 2026-10-20
+**Hora**: 2026-10-27
 
 **Por**: OpenCode (assistente AI)
 

@@ -229,12 +229,6 @@ func setupRoutes(
 	http.Handle("/api/v1/user/profile", injector)
 	http.Handle("/api/v1/user/change-password", injector)
 
-	http.HandleFunc("/api/v1/location/update", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, `{"message":"Location updated"}`)
-	})
-
 	http.Handle("/ws/audio/", webSocketAuthMiddleware(authService, http.HandlerFunc(voiceHandler.HandleWebSocket)))
 }
 
