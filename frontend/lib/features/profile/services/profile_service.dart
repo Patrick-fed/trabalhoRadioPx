@@ -6,7 +6,7 @@ import '../models/profile_model.dart';
 import '../../auth/services/auth_service.dart';
 
 class ProfileService {
-  final String baseUrl = AppConfig.apiBaseUrl;
+  String get baseUrl => AppConfig.apiBaseUrl;
   final AuthService _authService = AuthService();
 
   Future<ProfileModel> getProfile() async {

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/config.dart';
+import '../../settings/widgets/server_url_sheet.dart';
 import '../models/profile_model.dart';
 import '../services/profile_service.dart';
 import '../../auth/services/auth_service.dart';
@@ -264,6 +266,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
               onPressed: _changePassword,
               icon: const Icon(Icons.lock),
               label: const Text('Alterar Senha'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () async {
+                await ServerUrlSheet.show(context);
+                if (mounted) setState(() {});
+              },
+              icon: const Icon(Icons.dns),
+              label: Text(
+                'Servidor: ${AppConfig.displayHost}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
               style: OutlinedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 12),
               ),

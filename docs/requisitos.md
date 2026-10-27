@@ -197,6 +197,26 @@ O sistema deve ordenar áudios:
 
 ---
 
+### RNF06 - Configurabilidade do servidor
+
+- A URL da API é editável em runtime pelo próprio app (tela/sheet acessível no
+  login e no perfil), sem exigir novo build para trocar de servidor
+- Valor inicial (semente) vem do build (`--dart-define=API_BASE_URL`); a URL
+  salva pelo usuário persiste localmente (`shared_preferences`) e tem precedência
+  sobre a semente
+- Entrada validada: apenas `http://` ou `https://`, com `trim` e remoção de `/`
+  final; a URL WebSocket é derivada automaticamente (`https:` → `wss:`,
+  `http:` → `ws:`)
+- Botão de teste de conexão contra `GET /health` antes de salvar
+
+**Critérios de Verificação:**
+- Trocar a URL no app e conectar sem recompilar o APK
+- URL inválida (sem `http(s)://`) é recusada com mensagem clara
+- Persistência sobrevive ao reinício do app; sem valor salvo, usa a semente do build
+- `flutter test` cobre normalização, persistência e o formulário
+
+---
+
 ## Rastreabilidade
 
 ### RF01 → Backend → Database → Frontend → Testes

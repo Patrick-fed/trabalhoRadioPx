@@ -156,6 +156,7 @@ backend/
 ```
 lib/
 ├── core/
+│   ├── config.dart                      # URL da API em runtime (RNF06)
 │   ├── network/
 │   │   ├── api_client.dart            # Cliente HTTP
 │   │   ├── dio_client.dart            # Configuração Dio
@@ -216,17 +217,33 @@ lib/
 │   │   └── models/
 │   │       └── location_model.dart
 │   │
-│   └── profile/
-│       ├── screens/
-│       │   └── profile_screen.dart
-│       ├── widgets/
-│       ├── services/
-│       │   └── profile_service.dart
-│       └── models/
+│   ├── profile/
+│   │   ├── screens/
+│   │   │   └── profile_screen.dart
+│   │   ├── widgets/
+│   │   ├── services/
+│   │   │   └── profile_service.dart
+│   │   └── models/
+│   │
+│   └── settings/
+│       └── widgets/
+│           └── server_url_sheet.dart    # Sheet de URL do servidor (RNF06)
 │
 ├── main.dart
 └── app.dart
 ```
+
+### Configuração do servidor (RNF06)
+
+- `core/config.dart` (`AppConfig`) mantém a URL da API em **runtime**: semente
+  do build (`--dart-define=API_BASE_URL`), sobrescrita pela URL salva pelo
+  usuário em `shared_preferences` (chave `server_url`); `main()` chama
+  `AppConfig.load()` antes do `runApp`.
+- `wsBaseUrl` deriva automaticamente (`https:` → `wss:`, `http:` → `ws:`).
+- Validação em `normalizeUrl`: `trim`, remoção de `/` final, só `http://`/`https://`.
+- UI: `features/settings/widgets/server_url_sheet.dart` (bottom sheet com
+  **Testar** via `GET /health` e **Salvar**), acessível no Login ("Configurar
+  servidor") e no Perfil ("Servidor").
 
 ### Módulos
 

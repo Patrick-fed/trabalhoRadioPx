@@ -6,7 +6,13 @@ Este documento registra o estado atual do projeto para facilitar a continuidade 
 
 ## Fase
 
-**Desenvolvimento - Protótipo Funcional + APK Android (27/10/2026 - Fase 2: exposição via ngrok)**
+**Desenvolvimento - Protótipo Funcional + APK Android (27/10/2026 - Fase 3: URL do servidor editável)**
+
+Em 27/10/2026 a Fase 3 entrou em vigor: a URL da API é editável em runtime
+pelo app (RNF06), com semente do build (`--dart-define`), persistência em
+`shared_preferences` e sheet com Testar/Salvar acessível no Login e no Perfil.
+Trocar de URL (ex.: ngrok reiniciado) não exige mais novo build. Ver
+[CHANGELOG](CHANGELOG.md) de 27/10/2026.
 
 Em 27/10/2026 a Fase 2 entrou em vigor: o backend fica exposto por túnel ngrok
 (`ngrok http 8080`) com URL HTTPS por sessão — o APK passa a ser buildado com
@@ -186,6 +192,28 @@ Estes itens **não** serão implementados na v1. O protótipo roda em memória e
 ---
 
 ## Última Alteração
+
+**27/10/2026 - Fase 3: URL do servidor editável em runtime no app**
+
+**Data**: 27/10/2026
+
+**Descrição**:
+- **RNF06** adicionado a `docs/requisitos.md` (configurabilidade do servidor)
+- **`core/config.dart`**: `AppConfig.apiBaseUrl` vira runtime — semente do
+  build + `load()`/`save()` com `shared_preferences` (`server_url`), `main()`
+  carrega antes do `runApp`; `normalizeUrl`/`displayHost`/`resetForTest`
+- **3 services** (`auth`/`channels`/`profile`): `baseUrl` de `final` para
+  getter (mudança de URL vale sem nova instanciação)
+- **Novo** `features/settings/widgets/server_url_sheet.dart` (sheet Testar
+  via `GET /health` / Salvar); acessível no **Login** ("Configurar servidor")
+  e no **Perfil** ("Servidor: <host>" em Ações); sessão mantida ao trocar
+- **Testes**: `config_test.dart` (8) + `server_url_sheet_test.dart` (2);
+  suíte **52/52**; APK 50,8MB rebuildado com `--dart-define` da URL do túnel
+
+**Verificação**: `flutter test` 52/52; `flutter analyze` sem novos issues;
+build de release OK. Detalhes em `CHANGELOG.md`.
+
+---
 
 **27/10/2026 - Fase 2: exposição do backend via ngrok**
 
@@ -479,15 +507,16 @@ frontend intocado. Detalhes em `CHANGELOG.md`.
 
 ## Próxima Tarefa
 
-**Plano aprovado — Fases 0, 1 e 2 concluídas; pendentes 3 e 4**
+**Plano aprovado — Fases 0, 1, 2 e 3 concluídas; pendente 4**
 
 ### Próximas Fases
 
 1. ~~**Fase 2 — Expor o backend via ngrok**~~ — **Concluída em 27/10/2026**
    (túnel + CORS + script; ver CHANGELOG da data. URL por sessão no plano free)
-2. **Fase 3 — Tela para colar a URL do servidor no app** (exige novo RNF06 em `docs/requisitos.md`)
+2. ~~**Fase 3 — Tela para colar a URL do servidor no app**~~ — **Concluída em
+   27/10/2026** (RNF06 adicionado; `AppConfig` em runtime + sheet Login/Perfil)
 3. **Fase 4 — Documentação**: `docs/banco-de-dados.md` (schema 002), `docs/decisoes.md`
-   (DEC-012+), `docs/requisitos.md` (RNF06), `PROJECT_STATE.md`/`README.md` finais
+   (DEC-012+), `PROJECT_STATE.md`/`README.md` finais
 
 ---
 
@@ -496,7 +525,7 @@ frontend intocado. Detalhes em `CHANGELOG.md`.
 1. ~~**Distância dos canais nunca aparece**~~ — **Resolvido (backend, `feature-login`)**: `Channel` agora tem `distance,omitempty` serializado e `GetNearbyChannels` popula o campo; o frontend já parseia e renderiza (`channel_model.dart`, `channels_screen.dart`). Resta validação em campo.
 2. **Estado das telas perdido ao trocar de aba** — `frontend/lib/app.dart` monta a lista de telas dentro do `build` (`body: _screens[_currentIndex]`), então o `State` é destruído e recriado a cada troca de aba. Não afeta mais a atualização da lista de canais (que agora é por polling), mas faz scroll e aba interna voltarem ao padrão. Correção sugerida: `IndexedStack` + atualização explícita ao selecionar a aba.
 3. **Validação em campo pendente da correção de instância única** — a mudança no manifesto (`taskAffinity` removido, `singleTask`) foi conferida no APK gerado via `aapt2`, mas o comportamento no aparelho ainda precisa ser validado: tocar no ícone do launcher 3-4 vezes com o app em background deve retomar na mesma tela e manter 1 entrada no recents. Se o fluxo "sair do canal" (engrenagem → "Sair do Canal") continuar falhando depois disso, o próximo passo é expor um botão visível de sair na tela de voz — hoje ele está 2 níveis abaixo de um ícone de engrenagem.
-4. ~~**IP do servidor embutido no APK fica obsoleto a cada troca de DHCP**~~ — **Mitigado em 27/10/2026 (Fase 2)**: o backend ficou exposto via túnel ngrok e o APK é buildado com a URL do túnel (`--dart-define=API_BASE_URL=https://*.ngrok-free.dev`), então a troca de IP da rede local deixou de quebrar o binário. **Resta**: no plano free a URL do ngrok muda a cada reinício do túnel → exige novo build; a correção definitiva é a Fase 3 (URL editável em runtime, exige RF/RNF novo em `docs/requisitos.md`).
+4. ~~**IP do servidor embutido no APK fica obsoleto a cada troca de DHCP**~~ — **Resolvido em 27/10/2026 (Fases 2+3)**: a Fase 2 expôs o backend via túnel ngrok (o APK deixou de depender do IP local) e a Fase 3 tornou a URL editável em runtime no app (RNF06 — semente do build, `shared_preferences`, sheet no Login e no Perfil). Reinício do ngrok com URL nova é resolvido dentro do app, sem novo build.
 5. **Validação em campo pendente do timeout/reconexão** — a detecção de falha de handshake do WebSocket foi conferida na fonte do `web_socket_channel 2.4.5` e no código, mas não em aparelho: com o backend parado, entrar num canal deve exibir a mensagem de erro em ~10s e a tela de voz deve passar por 5 tentativas com backoff até o botão "Tentar novamente". Em web esse comportamento não é garantido (o `ready` lá é stub).
 6. ~~**Backend não usa PostgreSQL — tudo é em memória**~~ — **Resolvido em 20/10/2026 (Fase 1)**: pacote `internal/db` (config `DB_*`, `Open`, runner de migrações) + `PGUserStore`/`PGChannelStore` com `jackc/pgx/v5` v5.7.4; `001_initial.sql` movido para `internal/db/migrations/` e alinhado por `002_align_models.sql`. Persistem `users`, `channels` e `user_channels`; localização segue em memória e áudio nunca é gravado. Contas sobrevivem a reinícios (login 200 após restart verificado).
 7. **`setState` logo após `Navigator.pop` no salvamento de perfil** — em `profile_screen.dart`, o `finally { setState(...) }` de `_saveProfile` executa logo após o `pop` do caminho de sucesso. Hoje funciona porque a bottom sheet ainda está na animação de saída, mas é frágil: se a animação mudar, pode virar `setState() called after dispose()`.
@@ -599,4 +628,4 @@ frontend intocado. Detalhes em `CHANGELOG.md`.
 3. **Monitoramento**: Implementar logs e métricas
 4. **Documentação**: Atualizar README com instruções de deploy
 5. **Google OAuth**: Implementar login social (futuro)
-6. **IP do servidor**: a URL do backend entra no binário via `--dart-define` e oscila junto com o DHCP (ver Problemas Conhecidos nº 4). Resolver com reserva DHCP no roteador, ou tornando a URL editável em runtime — esta última exige RF/RNF novo em `docs/requisitos.md` (decisão pendente)
+6. **IP do servidor**: ~~a URL do backend entra no binário via `--dart-define` e oscila junto com o DHCP~~ — **resolvido nas Fases 2+3** (túnel ngrok + URL editável em runtime, RNF06). Resta apenas a rotina operacional: ao reiniciar o ngrok, atualizar a URL no app (ou rebuildar com a nova semente)

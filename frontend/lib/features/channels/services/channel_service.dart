@@ -6,7 +6,7 @@ import '../../../core/api_client.dart';
 import '../../../core/config.dart';
 
 class ChannelService {
-  final String baseUrl = AppConfig.apiBaseUrl;
+  String get baseUrl => AppConfig.apiBaseUrl;
   final AuthService _authService = AuthService();
 
   Future<List<ChannelModel>> getNearbyChannels({

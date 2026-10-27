@@ -10,7 +10,7 @@ import '../models/user_model.dart';
 import 'token_validity.dart';
 
 class AuthService {
-  final String baseUrl = AppConfig.apiBaseUrl;
+  String get baseUrl => AppConfig.apiBaseUrl;
   static const String _tokenKey = 'auth_token';
   static const String _refreshTokenKey = 'refresh_token';
   static const String _userKey = 'user_data';

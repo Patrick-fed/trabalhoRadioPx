@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/api_client.dart';
+import '../../settings/widgets/server_url_sheet.dart';
 import '../services/auth_service.dart';
 import 'register_screen.dart';
 
@@ -152,6 +153,11 @@ class _LoginScreenState extends State<LoginScreen> {
                       );
                     },
                     child: const Text('Não tem conta? Registre-se'),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => ServerUrlSheet.show(context),
+                    icon: const Icon(Icons.dns, size: 18),
+                    label: const Text('Configurar servidor'),
                   ),
                 ],
               ),

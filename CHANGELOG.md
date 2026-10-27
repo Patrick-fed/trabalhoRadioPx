@@ -4,6 +4,83 @@ Este documento registra todas as alterações significativas do projeto.
 
 ---
 
+## 27/10/2026 - Fase 3: URL do servidor editável em runtime no app
+
+### Contexto
+
+Fase 3 do plano aprovado (0 higiene ✅, 1 PostgreSQL ✅, 2 ngrok ✅, 3 esta ✅,
+4 docs). A Fase 2 mitigou o Problema nº 4 (IP de DHCP quebrando o APK), mas no
+plano free a URL do ngrok muda a cada reinício do túnel e exigia novo build —
+a correção definitiva é editar a URL dentro do próprio app (RNF06, agora
+adicionado a `docs/requisitos.md`).
+
+### Alterações
+
+**Requisitos — `docs/requisitos.md`**
+
+- Novo **RNF06 - Configurabilidade do servidor**: URL editável em runtime,
+  semente via `--dart-define`, persistência local, validação `http(s)://`,
+  derivação automática de `wss`/`ws` e teste de conexão via `/health`.
+
+**Frontend — `core/config.dart`**
+
+- `AppConfig.apiBaseUrl` deixou de ser `static const` (tempo de compilação) e
+  passou a ser valor em runtime: `_kBuildDefault` (dart-define) vira semente,
+  `load()` lê a URL salva (`shared_preferences`, chave `server_url`) antes do
+  `runApp` (`main.dart`), `save()` valida (`normalizeUrl`: trim, remove `/`
+  final, só `http://`/`https://`), persiste e aplica; `displayHost` para
+  exibição; `resetForTest()` marcado `@visibleForTesting`.
+
+**Frontend — services**
+
+- `AuthService`, `ChannelService` e `ProfileService`: `baseUrl` de campo
+  `final` (capturado na instanciação) para **getter** — mudança de URL vale
+  imediatamente, sem instanciar de novo. `WebSocketService` já lia o valor no
+  `connect()`.
+
+**Frontend — UI (novo)**
+
+- `features/settings/widgets/server_url_sheet.dart`: bottom sheet com campo de
+  URL, botão **Testar** (`GET /health`, timeout 10s) e **Salvar** (valida e
+  persiste; a sessão é mantida — decisão abaixo).
+- **Login**: TextButton "Configurar servidor" (corrige URL sem conseguir logar).
+- **Perfil**: item "Servidor: <host>" na seção "Ações" (troca em uso).
+
+**Testes — `frontend/test/`**
+
+- `config_test.dart`: normalização, persistência, fallback para a semente,
+  derivação `ws`/`wss` e `displayHost` (8 testes, `SharedPreferences` mockado).
+- `server_url_sheet_test.dart`: widget — salvar URL válida persiste e fecha
+  com SnackBar; URL inválida mostra erro e não grava (2 testes).
+- Suíte completa: **52/52 verdes**.
+
+### Motivo
+
+Sem isso, cada troca de URL do túnel exigiria recompilar e reinstalar o APK
+(para usuários do TCC, inviável em demonstração). Com o RNF06, o app troca de
+servidor em segundos, sem build.
+
+### Verificação
+
+- `flutter test` → 52/52 (47 prévios + 9 novos).
+- `flutter analyze` → sem novos issues (só `info` pré-existentes em voice/).
+- `flutter build apk --release --dart-define=API_BASE_URL=https://...` →
+  50,8MB copiado para `RadioPX.apk`, URL embutida conferida no binário.
+
+### Decisões e observações
+
+- **Sessão mantida ao trocar URL** (decisão do autor): o JWT segue válido no
+  mesmo banco/secret; se o usuário apontar para outro servidor, o fluxo
+  existente de 401/refresh-fail já limpa a sessão.
+- **Acesso em dois pontos** (Login + Perfil): instalação nova com URL padrão
+  morta precisa corrigir pré-login; usuário logado troca sem deslogar.
+- O botão "Testar" usa `GET /health` — endpoint já existente, sem mudança de
+  backend nesta fase (nenhum arquivo Go foi alterado).
+- A URL salva tem precedência sobre a semente do build; sem valor salvo, o
+  comportamento é idêntico ao anterior.
+
+---
+
 ## 27/10/2026 - Fase 2: exposição do backend via ngrok
 
 ### Contexto
