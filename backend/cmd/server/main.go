@@ -109,7 +109,7 @@ func main() {
 	setupRoutes(userHandler, channelHandler, voiceHandler, authService, userService)
 
 	c := cors.New(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:*"},
+		AllowedOrigins:   []string{"http://localhost:*", "https://*.ngrok-free.app", "https://*.ngrok-free.dev"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"*"},
 		AllowCredentials: true,

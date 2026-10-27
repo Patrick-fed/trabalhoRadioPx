@@ -23,6 +23,8 @@ function Check($Name, $Condition, $Detail = "") {
 }
 
 function Invoke-Json($Method, $Path, $Body = $null, $Headers = @{}) {
+  # ngrok: sem este header, o "browser warning" (ERR_NGROK_6024) substitui a resposta da API
+  $Headers['ngrok-skip-browser-warning'] = '1'
   $params = @{
     Uri     = "$BaseUrl$Path"
     Method  = $Method
@@ -53,6 +55,7 @@ function Invoke-Json($Method, $Path, $Body = $null, $Headers = @{}) {
 
 function New-Ws([string]$Uri) {
   $ws = [System.Net.WebSockets.ClientWebSocket]::new()
+  $ws.Options.SetRequestHeader('ngrok-skip-browser-warning', '1')
   [void]$ws.ConnectAsync([Uri]::new($Uri), [System.Threading.CancellationToken]::None).GetAwaiter().GetResult()
   return $ws
 }

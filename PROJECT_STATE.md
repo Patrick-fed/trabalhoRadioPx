@@ -6,7 +6,14 @@ Este documento registra o estado atual do projeto para facilitar a continuidade 
 
 ## Fase
 
-**Desenvolvimento - Protótipo Funcional + APK Android (20/10/2026 - Fase 1: persistência PostgreSQL)**
+**Desenvolvimento - Protótipo Funcional + APK Android (27/10/2026 - Fase 2: exposição via ngrok)**
+
+Em 27/10/2026 a Fase 2 entrou em vigor: o backend fica exposto por túnel ngrok
+(`ngrok http 8080`) com URL HTTPS por sessão — o APK passa a ser buildado com
+`--dart-define=API_BASE_URL=<url do túnel>`, eliminando a dependência do IP de
+DHCP local. CORS do backend agora aceita `https://*.ngrok-free.{app,dev}` e o
+script de testes envia o header de bypass do "browser warning". Ver
+[CHANGELOG](CHANGELOG.md) de 27/10/2026.
 
 Em 20/10/2026 a Fase 1 do plano aprovado entrou em vigor: usuários, canais e memberships
 agora são persistidos em PostgreSQL (pacote `internal/db` + stores PG em `user`/`channel`),
@@ -179,6 +186,32 @@ Estes itens **não** serão implementados na v1. O protótipo roda em memória e
 ---
 
 ## Última Alteração
+
+**27/10/2026 - Fase 2: exposição do backend via ngrok**
+
+**Data**: 27/10/2026
+
+**Descrição**:
+- **Túnel ngrok** (`ngrok http 8080`, agente 3.39.13 após `ngrok update` — o
+  winget instalou 3.3.1, abaixo do mínimo da conta) entrega URL HTTPS por
+  sessão; authtoken fica em `%LOCALAPPDATA%\ngrok\ngrok.yml` (fora do repo)
+- **CORS**: `AllowedOrigins` em `cmd/server/main.go` ganhou
+  `https://*.ngrok-free.app` e `https://*.ngrok-free.dev` (conta usa `.dev`);
+  verificado GET com Origin + preflight OPTIONS (204 + ACAO correto)
+- **`scripts/test-backend.ps1`**: header `ngrok-skip-browser-warning: 1` em
+  `Invoke-Json` e no handshake WS (sem ele, o aviso ERR_NGROK_6024 substitui a
+  resposta da API)
+- **APK**: `flutter build apk --release --dart-define=API_BASE_URL=<url do
+  túnel>` → 50,8MB copiado para `RadioPX.apk` (gitignored), URL conferida no
+  binário
+- **Problema nº 4 mitigado** (IP de DHCP não quebra mais o APK); **novo nº 9**
+  (rate limit global atrás do túnel, decisão: manter por ora)
+
+**Verificação**: `GET /health` via túnel → 200; `test-backend.ps1 -BaseUrl
+<url>` → 28/28 (inclui relay wss); CORS GET+preflight corretos. Detalhes em
+`CHANGELOG.md`.
+
+---
 
 **27/10/2026 - Limpeza de órfãos pós-Fase 1 (location e endpoint morto)**
 
@@ -446,11 +479,12 @@ frontend intocado. Detalhes em `CHANGELOG.md`.
 
 ## Próxima Tarefa
 
-**Plano aprovado — Fases 0 e 1 concluídas; pendentes 2, 3 e 4**
+**Plano aprovado — Fases 0, 1 e 2 concluídas; pendentes 3 e 4**
 
 ### Próximas Fases
 
-1. **Fase 2 — Expor o backend via ngrok** (fim do Problema Conhecido nº 4)
+1. ~~**Fase 2 — Expor o backend via ngrok**~~ — **Concluída em 27/10/2026**
+   (túnel + CORS + script; ver CHANGELOG da data. URL por sessão no plano free)
 2. **Fase 3 — Tela para colar a URL do servidor no app** (exige novo RNF06 em `docs/requisitos.md`)
 3. **Fase 4 — Documentação**: `docs/banco-de-dados.md` (schema 002), `docs/decisoes.md`
    (DEC-012+), `docs/requisitos.md` (RNF06), `PROJECT_STATE.md`/`README.md` finais
@@ -462,11 +496,12 @@ frontend intocado. Detalhes em `CHANGELOG.md`.
 1. ~~**Distância dos canais nunca aparece**~~ — **Resolvido (backend, `feature-login`)**: `Channel` agora tem `distance,omitempty` serializado e `GetNearbyChannels` popula o campo; o frontend já parseia e renderiza (`channel_model.dart`, `channels_screen.dart`). Resta validação em campo.
 2. **Estado das telas perdido ao trocar de aba** — `frontend/lib/app.dart` monta a lista de telas dentro do `build` (`body: _screens[_currentIndex]`), então o `State` é destruído e recriado a cada troca de aba. Não afeta mais a atualização da lista de canais (que agora é por polling), mas faz scroll e aba interna voltarem ao padrão. Correção sugerida: `IndexedStack` + atualização explícita ao selecionar a aba.
 3. **Validação em campo pendente da correção de instância única** — a mudança no manifesto (`taskAffinity` removido, `singleTask`) foi conferida no APK gerado via `aapt2`, mas o comportamento no aparelho ainda precisa ser validado: tocar no ícone do launcher 3-4 vezes com o app em background deve retomar na mesma tela e manter 1 entrada no recents. Se o fluxo "sair do canal" (engrenagem → "Sair do Canal") continuar falhando depois disso, o próximo passo é expor um botão visível de sair na tela de voz — hoje ele está 2 níveis abaixo de um ícone de engrenagem.
-4. **IP do servidor embutido no APK fica obsoleto a cada troca de DHCP** — `API_BASE_URL` entra no binário pelo `--dart-define` do build, e o endereço da máquina oscila entre `172.16.158.222` e `10.201.108.96` (histórico: 22/09 → 04/10 → 06/10), quebrando o APK a cada troca. Mitigação aplicada em 06/10/2026: timeout de 10s + mensagem clara de erro (antes era spinner infinito). Correção real exige reserva DHCP/IP estático no roteador (fora do repo) ou URL editável em runtime (esta exige RF/RNF novo em `docs/requisitos.md`).
+4. ~~**IP do servidor embutido no APK fica obsoleto a cada troca de DHCP**~~ — **Mitigado em 27/10/2026 (Fase 2)**: o backend ficou exposto via túnel ngrok e o APK é buildado com a URL do túnel (`--dart-define=API_BASE_URL=https://*.ngrok-free.dev`), então a troca de IP da rede local deixou de quebrar o binário. **Resta**: no plano free a URL do ngrok muda a cada reinício do túnel → exige novo build; a correção definitiva é a Fase 3 (URL editável em runtime, exige RF/RNF novo em `docs/requisitos.md`).
 5. **Validação em campo pendente do timeout/reconexão** — a detecção de falha de handshake do WebSocket foi conferida na fonte do `web_socket_channel 2.4.5` e no código, mas não em aparelho: com o backend parado, entrar num canal deve exibir a mensagem de erro em ~10s e a tela de voz deve passar por 5 tentativas com backoff até o botão "Tentar novamente". Em web esse comportamento não é garantido (o `ready` lá é stub).
 6. ~~**Backend não usa PostgreSQL — tudo é em memória**~~ — **Resolvido em 20/10/2026 (Fase 1)**: pacote `internal/db` (config `DB_*`, `Open`, runner de migrações) + `PGUserStore`/`PGChannelStore` com `jackc/pgx/v5` v5.7.4; `001_initial.sql` movido para `internal/db/migrations/` e alinhado por `002_align_models.sql`. Persistem `users`, `channels` e `user_channels`; localização segue em memória e áudio nunca é gravado. Contas sobrevivem a reinícios (login 200 após restart verificado).
 7. **`setState` logo após `Navigator.pop` no salvamento de perfil** — em `profile_screen.dart`, o `finally { setState(...) }` de `_saveProfile` executa logo após o `pop` do caminho de sucesso. Hoje funciona porque a bottom sheet ainda está na animação de saída, mas é frágil: se a animação mudar, pode virar `setState() called after dispose()`.
 8. **WebSocket agora exige JWT e quebra clientes antigos** — desde 11/10/2026 o endpoint `/ws/audio/` exige `?token=<access JWT>` (validado por `webSocketAuthMiddleware`, com o `user_id` forçado ao ID do token). APKs compilados antes desta mudança deixam de conectar até serem recompilados. Mitigação: `AuthService.getValidToken()` renova o token antes de conectar. Validação em campo pendente.
+9. **Rate limit global atrás do túnel** — desde 27/10/2026 (Fase 2) todo tráfego REST chega como o agente ngrok em `127.0.0.1`; `getClientID` (`internal/middleware/ratelimit.go`) usa `RemoteAddr` e ignora X-Forwarded-For por segurança, então os 10/min de register/login/refresh valem para o **somatório de todos os clientes** do túnel. Decisão registrada em 27/10/2026: manter como está e reavaliar se aparecer 429 em campo (contornos: subir cota, ou confiar XFF só quando o RemoteAddr for o agente local — decisão de segurança).
 
 ---
 

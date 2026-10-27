@@ -4,6 +4,76 @@ Este documento registra todas as alterações significativas do projeto.
 
 ---
 
+## 27/10/2026 - Fase 2: exposição do backend via ngrok
+
+### Contexto
+
+Fase 2 do plano aprovado (fases: 0 higiene ✅, 1 persistência ✅, 2 ngrok ✅,
+3 tela de URL no app, 4 docs). Objetivo: entregar uma URL HTTPS pública estável
+por sessão, eliminando a dependência do IP de DHCP da máquina (Problema Conhecido
+nº 4). Conta ngrok criada pelo autor; agente instalado e configurado na máquina
+(a config com o authtoken fica fora do repo, em `%LOCALAPPDATA%\ngrok\ngrok.yml`).
+
+### Alterações
+
+**Backend — `cmd/server/main.go` (CORS)**
+
+- `AllowedOrigins` ganhou `https://*.ngrok-free.app` **e** `https://*.ngrok-free.dev`
+  (a conta do autor recebeu domínio `.dev`; wildcard suportado pelo `rs/cors`
+  v1.10.1, verificado na fonte — um `*` por origem). Sem isso, chamadas de
+  navegador pela URL do túnel eram barradas por CORS (APK não era afetado).
+
+**Scripts — `scripts/test-backend.ps1`**
+
+- Header `ngrok-skip-browser-warning: 1` em `Invoke-Json` e no handshake do
+  `ClientWebSocket` (`New-Ws`): sem ele, o "browser warning" do ngrok
+  (`ERR_NGROK_6024`) substitui a resposta da API por uma página HTML de aviso e
+  todos os checks falham.
+
+**Operacional (fora do repo)**
+
+- Instalação via `winget install Ngrok.Ngrok`; o pacote do winget veio na
+  **3.3.1**, abaixo do mínimo da conta (**3.20.0**, erro `ERR_NGROK_121`) —
+  resolvido com `ngrok update` (agente em **3.39.13**).
+- Túnel: `ngrok http 8080` (URL da sessão de teste via
+  `127.0.0.1:4040/api/tunnels`).
+
+### Motivo
+
+`API_BASE_URL` entra no APK via `--dart-define` e o IP da máquina oscila a cada
+lease de DHCP, quebrando o binário (Problema nº 4, histórico em 04/10 e 06/10).
+A URL do túnel não depende da rede local. A correção definitiva (URL editável em
+runtime) segue como Fase 3.
+
+### Verificação
+
+- `GET <url>/health` pelo túnel → **200** `{"status":"ok","connections":0}`.
+- `scripts/test-backend.ps1 -BaseUrl <url>` → **28/28** (inclui relay de áudio
+  via `wss://` através do túnel).
+- **CORS**: GET com `Origin: <url>` → resposta 401 da API com
+  `Access-Control-Allow-Origin: <url>` e `Allow-Credentials: true`; preflight
+  `OPTIONS` → **204** com ACAO correto.
+- **APK**: `flutter build apk --release --dart-define=API_BASE_URL=<url>` →
+  50,8MB, copiado para `RadioPX.apk`; URL conferida dentro do binário.
+
+### Decisões e observações
+
+- **Rate limit vira global atrás do túnel**: `getClientID` usa `RemoteAddr`
+  (XFF ignorado por segurança) e todo tráfego chega como o agente ngrok — os
+  10/min de register/login/refresh valem para **somatório de todos os clientes**
+  do túnel. **Decisão do autor (27/10): manter como está** e reavaliar se
+  aparecer 429 em campo.
+- **TLS**: o túnel entrega HTTPS/WSS — observação para o RNF05 na Fase 4.
+- **URL por sessão (plano free)**: reiniciar o ngrok gera URL nova → exige
+  novo build de APK com o `--dart-define`. A Fase 3 (tela de URL editável +
+  RNF06 em `docs/requisitos.md`) resolve isso.
+- **URL pública**: qualquer pessoa com o link acessa os endpoints abertos
+  (register/login/refresh) — protegidos por JWT; rate limit é a única cota.
+- Quem abrir a URL num navegador vê a página de aviso do ngrok; apps e scripts
+  que enviam o header de bypass não são afetados.
+
+---
+
 ## 27/10/2026 - Limpeza de órfãos pós-Fase 1 (pacote location e endpoint morto)
 
 ### Contexto
