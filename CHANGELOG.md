@@ -159,6 +159,55 @@ que o código cumpria só em memória: reiniciar o backend zera usuários e cana
 
 ---
 
+## 20/10/2026 - Fase 0: conformidade com as regras do repo (segredos fora do git, artefatos de build)
+
+### Contexto
+
+Primeira fase da ampliação do projeto (persistência PostgreSQL + exposição via ngrok). Nenhuma linha de
+código de aplicação foi alterada — apenas higiene do repositório. O `backend/.env` estava trackeado desde
+o commit inicial com `DB_PASSWORD` e `JWT_SECRET` reais, em violação ao AGENTS.md ("JWT Secret: nunca
+committar em repositório").
+
+### Alterações
+
+- **`.gitignore` na raiz (novo)** — regras para segredos (`backend/.env`, `backend/.env.*` com exceção de
+  `.env.example`), artefatos de build (`backend/server.exe`, `RadioPX.apk`, `frontend/build/`,
+  `frontend/android/build/`) e `.vscode/`. O `frontend/android/build/` vinha aparecendo como untracked
+  porque o `.gitignore` do módulo android não cobre `build/`
+- **`git rm --cached backend/.env backend/server.exe RadioPX.apk`** — segredo e binários saem do
+  versionamento (os arquivos continuam no disco; ignorá-los sem tirá-los do git não teria efeito).
+  Observação: o `RadioPX.apk` foi entregável versionado em 3 commits — se quiser continuar publicando-o
+  no repo, basta `git add -f RadioPX.apk` e remover a linha do `.gitignore`
+- **`JWT_SECRET` rotacionado** — o valor antigo (`your-super-secret-jwt-key-change-in-production`) é o
+  placeholder do `.env.example` e está no histórico do git; o novo é aleatório (48 bytes, base64) e vive
+  só no `backend/.env` local. Rotação invalida tokens emitidos antes (irrelevante hoje: usuários em
+  memória são perdidos a cada restart)
+- **`backend/.env` recriado localmente** com as credenciais verificadas do PostgreSQL local
+  (`localhost:5432`, database `radiopx` já existente com o schema da migração 001 e 0 linhas) e o novo
+  segredo
+
+### Motivo
+
+Preparar o repositório para as fases seguintes (persistência e ngrok) sem vazar segredos e sem poluir o
+status com artefatos de build.
+
+### Verificação
+
+- `git check-ignore -v` confirma: `backend/.env`, `backend/server.exe`, `RadioPX.apk`,
+  `frontend/android/build/`, `.vscode/`; e confirma que `backend/.env.example` **não** é ignorado (regra
+  de exceção funcionando)
+- `git status` mostra apenas as três exclusões stageadas, o `.gitignore` novo e as modificações
+  pré-existentes de `frontend/windows/flutter/generated_plugin_*` (regeneradas por um `flutter` local,
+  não tocadas aqui)
+
+### Notas
+
+- Os blobs do `.env` antigo permanecem no histórico (commits `dd31110`..`6005a7e`). Reescrever o
+  histórico seria destrutivo e ficou fora do escopo deliberadamente; a rotação do segredo mitiga o risco
+- Alterações stageadas, não commitadas — commit somente a pedido
+
+---
+
 ## 13/10/2026 - Reconciliação docs × código: registro de lacunas e escopo da v1
 
 ### Contexto

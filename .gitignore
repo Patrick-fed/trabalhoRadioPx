@@ -1,0 +1,13 @@
+# Segredos — NUNCA versionar (ver AGENTS.md e backend/.gitignore)
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# Artefatos de build
+backend/server.exe
+RadioPX.apk
+frontend/build/
+frontend/android/build/
+
+# Editor
+.vscode/
