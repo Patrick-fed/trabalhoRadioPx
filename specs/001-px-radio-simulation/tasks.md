@@ -12,10 +12,13 @@ description: "Task list for RadioPX feature implementation"
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
-> **Nota (13/10/2026)**: os checkboxes abaixo (`[x]`) são **otimistas**. Após auditoria do código,
-> alguns itens marcados como concluídos **não estão ligados ao fluxo real**: T045–T051 (buffer/replay
-> de US4 são código morto), T049/T050 (referenciam arquivos que não existem) e a parte de OAuth de
-> T052–T061. Ver `PROJECT_STATE.md` → *Lacunas / Aderência aos Requisitos*.
+> **Nota (13/10/2026, atualizada em 27/10/2026)**: os checkboxes abaixo (`[x]`) são **otimistas**.
+> Após auditoria do código, alguns itens marcados como concluídos **não estão ligados ao fluxo real**:
+> parte de OAuth de T052–T061, T049/T050 (referenciam arquivos que não existem) e T048 (o
+> `buffer_manager.go` existe mas não é usado). **Atualização 27/10**: T045/T047/T051 (buffer de 30s)
+> e o replay de reconexão de T050 **foram entregues de fato** — porém com outra arquitetura (relay
+> grava no `AudioBufferService` e o cliente pede `request_replay` em `websocket_service.dart`; a fila
+> é a `AudioQueue`). Ver `PROJECT_STATE.md` → *Lacunas / Aderência aos Requisitos*.
 
 ## Format: `[ID] [P?] [Story] Description`
 

@@ -396,3 +396,39 @@ mantida** ao trocar a URL.
 - `AppConfig` (runtime) + 3 services lendo `baseUrl` via getter; `main()` carrega
   as preferências antes do `runApp`.
 - Fim do Problema Conhecido nº 4 (DHCP) e da pendência de URL por sessão da Fase 2.
+
+## DEC-016 — Replay por usuário via sequence (RF06/RNF04)
+
+**Data**: 27/10/2026
+
+**Decisão**: o buffer de 30s do RF06 e o replay de reconexão são entregues com
+(1) relay gravando no **AudioBufferService** (memória, 30s/10MB) e anexando
+**sequence** ao payload de áudio, (2) o **cliente solicitando** o catch-up com
+`request_replay {room, since_sequence}` após reconectar (stateless, por
+usuário) e (3) fila FIFO no app (**AudioQueue**) com teto de ~960KB e sentinel
+de fim de segmento. O `BufferManager` permanece fora do fluxo; as flags
+`IsReplayed`/`MarkAsReplayed` não são usadas.
+
+**Motivo**:
+- `IsReplayed` é **global** por canal: marcaria a mensagem como vista para
+  todos, quebrando o replay individual de outro usuário reconectado.
+- Replay pedido pelo cliente evita estado de sessão no servidor e só busca o
+  que falta (`since_sequence` por cliente).
+- FIFO por ordem de chegada atende o RF08 (prioridade por timestamp ficou de fora).
+- RNF01/RNF04: o buffer só existe em memória e expira por idade (30s), sem
+  persistência de áudio.
+
+**Alternativas Consideradas**:
+- `BufferManager.HandleReconnection`/`ConfirmReplay`: exige estado por sessão
+  e traria o mesmo problema das flags globais.
+- Replay automático sem pedido: enviaria áudio a clientes que não reconectaram
+  de um canal em que já estavam atrasados.
+- Remover `BufferManager`: mantido como código morto deliberado (documentado)
+  para eventual uso futuro, evitando diff grande fora do escopo.
+
+**Impacto**:
+- `pkg/websocket/client.go` (relay + case `request_replay` + `safeSend`),
+  `internal/voice/buffer_adapter.go` (DIP), injeção em `main.go`/`handler.go`.
+- Frontend: `AudioQueue` (reescrita), `voice_screen` (fila + `_lastSequence`
+  + replay), `websocket_service.requestReplay`; fixes de disconnect e ociosidade.
+- Pendente: validação E2E com 2 clientes (`test-backend.ps1` não cobre WS).

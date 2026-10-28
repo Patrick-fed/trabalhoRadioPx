@@ -16,8 +16,8 @@ Arquitetura monolítica modular com separação por responsabilidades. O sistema
 | Profile | N/A | ✅ Completo | ✅ |
 
 > **Nota (27/10/2026)**: a tabela acima é aspiracional. Estado real: Voice com um falante por vez
-> (`voiceGuard`, 27/10), Location reduzida a cálculo de distância (handler removido), canais e
-> usuários em **PostgreSQL desde 20/10**, buffer/replay de voz ainda **não conectados**.
+> (`voiceGuard`, 27/10) e **buffer/replay conectados desde 27/10** (RF06/RF08), Location reduzida a
+> cálculo de distância (handler removido), canais e usuários em **PostgreSQL desde 20/10**.
 > Detalhes em `PROJECT_STATE.md` → *Lacunas / Aderência aos Requisitos*.
 
 ## Diagrama de Alto Nível

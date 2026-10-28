@@ -86,6 +86,14 @@ priorizado por timestamp (FIFO de chegada atende RF08), persistência do buffer
 - `go test` não cobre o relay/replay (sem harness de WS no Go); considerar
   teste futuro em `pkg/websocket`
 
+### Docs de consistência (mesmo dia)
+
+- `docs/decisoes.md` ganhou **DEC-016** (replay por usuário via sequence;
+  `BufferManager`/`IsReplayed` fora do fluxo; FIFO atende RF08)
+- `docs/arquitetura.md` (nota do topo), `README.md` (status/árvore) e
+  `specs/001-px-radio-simulation/tasks.md` (nota T045–T051) deixam de dizer
+  que buffer/replay "não estão conectados"
+
 ---
 
 ## 27/10/2026 - Fase 4: documentação final do plano aprovado

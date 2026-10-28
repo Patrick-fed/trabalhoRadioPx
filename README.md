@@ -116,7 +116,7 @@ RadioPx/
 │   │   ├── channel/                # Canais (handler/service/stores)
 │   │   ├── db/                     # Open + runner de migrações
 │   │   │   └── migrations/         # 001_initial.sql, 002_align_models.sql
-│   │   ├── voice/                  # PTT, WebSocket e buffer (parcial)
+│   │   ├── voice/                  # PTT, WebSocket, buffer 30s e replay (RF06/RF08)
 │   │   ├── location/               # Cálculo de distância (Haversine)
 │   │   └── middleware/             # Auth, CORS, rate limit, logging
 │   ├── pkg/                        # Pacotes reutilizáveis
@@ -152,8 +152,8 @@ RadioPx/
 ## Status Atual
 
 - **Arquitetura**: monolito modular Go + Flutter + PostgreSQL
-- **Fases do plano aprovado**: 0 (higiene) ✅, 1 (PostgreSQL) ✅, 2 (ngrok) ✅, 3 (URL editável/RNF06) ✅ — 4 (docs) em andamento
+- **Fases do plano aprovado**: 0 (higiene) ✅, 1 (PostgreSQL) ✅, 2 (ngrok) ✅, 3 (URL editável/RNF06) ✅, 4 (docs) ✅ + RF06/RF08 (buffer 30s, replay e fila) ✅
 - **Protótipo funcional**: backend Go com auth JWT + canais + voz via WebSocket; app Flutter com APK Android
-- **Conhecido e mapeado**: OAuth/Casbin fora do escopo v1; buffer/replay de voz não conectado; validação em campo pendente de alguns itens
+- **Conhecido e mapeado**: OAuth/Casbin fora do escopo v1; validação em campo pendente de alguns itens (inclui replay com 2 clientes)
 - **Estado e pendências**: `PROJECT_STATE.md` → *Lacunas / Aderência aos Requisitos*
 - **Última atualização**: 27/10/2026

@@ -109,8 +109,10 @@ Estes itens **não** serão implementados na v1 (persistência em PostgreSQL des
 
 - ~~`docs/arquitetura.md`~~ — corrigido em 27/10 (árvores reais, endpoints, Redis/OAuth/Casbin marcados).
 - ~~`docs/requisitos.md`~~ — nota de status atualizada em 27/10 (RF03/PG/RNF06).
-- `specs/001-px-radio-simulation/tasks.md` → T001–T073 marcados `[x]`, mas T045–T051
-  (buffer/replay) e a parte de OAuth de T052–T061 não foram entregues (**fora de escopo**).
+- `specs/001-px-radio-simulation/tasks.md` → T001–T073 marcados `[x]`, mas T049/T050 (arquivos
+  inexistentes), T048 (`buffer_manager.go` sem uso) e a parte de OAuth de T052–T061 não foram
+  entregues (**fora de escopo**); T045/T047/T051 e o replay de US4 **valem desde 27/10** com
+  outra arquitetura (ver CHANGELOG RF06/RF08).
 - ~~`README.md`~~ — reescrito em 27/10 (status real, testes, APK/ngrok, env vars).
 - `docs/banco-de-dados.md` e `docs/decisoes.md` atualizados na Fase 4 (schema pós-002; DEC-012..015).
 
@@ -236,6 +238,12 @@ Estes itens **não** serão implementados na v1 (persistência em PostgreSQL des
 **Verificação**: `go build` + `go vet` + `go test ./...` verdes; `flutter test`
 57/57; `flutter analyze` sem novos issues. Pendente: E2E manual de replay com
 2 clientes. Detalhes em `CHANGELOG.md`.
+
+**Docs de consistência (mesmo dia)**: `decisoes.md` ganhou **DEC-016** (replay
+por usuário via sequence; `BufferManager`/`IsReplayed` fora do fluxo); nota do
+topo de `arquitetura.md`, seção *Status Atual* do `README.md` e nota de
+T045–T051 em `specs/.../tasks.md` deixam de dizer que buffer/replay "não estão
+conectados".
 
 ---
 
