@@ -13,6 +13,7 @@ import (
 type VoiceHandler struct {
 	voiceService *VoiceService
 	hub          *ws.Hub
+	buffer       ws.AudioBuffer
 }
 
 var upgrader = websocket.Upgrader{
@@ -23,10 +24,11 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-func NewVoiceHandler(voiceService *VoiceService, hub *ws.Hub) *VoiceHandler {
+func NewVoiceHandler(voiceService *VoiceService, hub *ws.Hub, bufferService *AudioBufferService) *VoiceHandler {
 	return &VoiceHandler{
 		voiceService: voiceService,
 		hub:          hub,
+		buffer:       NewBufferAdapter(bufferService),
 	}
 }
 
@@ -48,7 +50,7 @@ func (vh *VoiceHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	client := ws.NewClientWithGuard(vh.hub, conn, userID, vh.voiceService)
+	client := ws.NewClientWithGuard(vh.hub, conn, userID, vh.voiceService, vh.buffer)
 	vh.hub.RegisterClient(client)
 	vh.hub.JoinRoom(client, channelID)
 

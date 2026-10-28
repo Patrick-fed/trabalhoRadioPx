@@ -4,6 +4,90 @@ Este documento registra todas as alterações significativas do projeto.
 
 ---
 
+## 27/10/2026 - RF06/RF08: buffer de 30s com replay e fila de áudio
+
+### Contexto
+
+O buffer/replay (RF06/RNF04) e a fila de áudio (RF08) existiam como código
+morto: `AudioBufferService`/`BufferManager` só apareciam em testes e
+`AudioQueue` não era importada. Este commit conecta o buffer ao WebSocket,
+entrega replay por usuário após reconexão, pluga a fila no fluxo de recepção
+e inclui 3 fixes adjacentes aprovados.
+
+### Backend
+
+**`pkg/websocket/client.go`**
+
+- Novas interfaces `AudioBuffer` + DTO `BufferedAudio` (DIP: evita ciclo de
+  import com `internal/voice`); `Client` ganha o campo `buffer`
+- Relay do case `"audio"` grava cada chunk no buffer (quando `is_ptt` e com
+  áudio) e retransmite `sequence`/`timestamp` no payload; falha de buffer não
+  bloqueia o relay ao vivo
+- Novo case `"request_replay"`: envia ao **sócio-cliente** os segmentos com
+  `sequence > since_sequence` (replay por usuário, stateless — `IsReplayed`
+  permanece intocado por ser global), terminando com pacote
+  `is_ptt=false,is_replayed=true`; membership da room é checada sob o lock do
+  hub; envio não-bloqueante (se o `send` enche, o replay é truncado)
+- **Fix voiceGuard**: `releaseVoice` no `defer` do `ReadPump` chama
+  `StopTransmission` em todas as rooms do client antes do unregister — falante
+  que cai sem `is_ptt=false` não deixa o canal travado como ocupado
+
+**`internal/voice/buffer_adapter.go`** (novo)
+
+- `bufferAdapter` adapta `*AudioBufferService` à interface `ws.AudioBuffer`
+
+**`internal/voice/handler.go`**, **`cmd/server/main.go`**
+
+- `NewVoiceHandler` recebe o `*AudioBufferService` e injeta o adapter no
+  client; `main.go` instancia o serviço com a config default (30s/10MB) e
+  inicia o `StartCleanupRoutine`
+
+**Fora de escopo (registrado)**: `BufferManager` continua não usado; replay
+priorizado por timestamp (FIFO de chegada atende RF08), persistência do buffer
+(RNF01: memória) e codec PCM16 não mudam.
+
+### Frontend
+
+**`features/voice/services/audio_queue.dart`** (reescrito)
+
+- Teto de memória de 30s (~960KB = 30s de PCM16 16kHz mono): descarta os
+  chunks mais antigos, nunca o último
+- Sentinel `enqueueEndOfSegment()` + stream `endOfSegmentStream`: o fim de
+  segmento entra na FIFO e é processado em ordem
+- Vazio é ignorado; `clear()` zera bytes e para a reprodução
+
+**`features/voice/screens/voice_screen.dart`**
+
+- O WS passa por `AudioQueue` antes do player (RF08); `_lastSequence` rastreia
+  a maior sequence recebida e, após reconexão bem-sucedida com
+  `_lastSequence > 0`, dispara `requestReplay` (primeira conexão não pede nada)
+- **Fix disconnected**: ao cair a conexão, `_endReceiveSegment` zera
+  "recebendo"/"ocupado" (fila e sequence ficam para o replay)
+- **Fix idle**: timer de ~2,5s sem chunk enquanto recebendo encerra o segmento
+  sozinho (falante que cai no meio do PTT não trava a tela)
+- Botão parar do player receptor agora limpa a fila junto
+
+**`core/websocket/websocket_service.dart`**
+
+- Novo `requestReplay(roomId, sinceSequence)` → mensagem `request_replay`
+
+### Testes
+
+- `frontend/test/audio_queue_test.dart` (novo, 5): FIFO, teto de memória,
+  sentinel, chunk vazio/último acima do teto, `clear`
+- Suíte Flutter **57/57** (era 52); `flutter analyze` sem novos issues
+- Backend: `go build` + `go vet` + `go test ./...` verdes; `test-backend.ps1`
+  intocado (o replay exige reconexão manual — validação E2E com 2 clientes)
+
+### Verificação pendente
+
+- E2E manual de replay: 2 clientes no mesmo canal, derrubar o WS de um durante
+  fala do outro e confirmar o catch-up pós-reconexão
+- `go test` não cobre o relay/replay (sem harness de WS no Go); considerar
+  teste futuro em `pkg/websocket`
+
+---
+
 ## 27/10/2026 - Fase 4: documentação final do plano aprovado
 
 ### Contexto

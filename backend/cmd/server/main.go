@@ -101,10 +101,12 @@ func main() {
 	authAdapter := &authUserServiceAdapter{svc: userService}
 	authService := auth.NewAuthService(secret, authAdapter)
 	voiceService := voice.NewVoiceService()
+	audioBuffer := voice.NewAudioBufferService(nil)
+	audioBuffer.StartCleanupRoutine()
 
 	userHandler := user.NewUserHandler(userService)
 	channelHandler := channel.NewChannelHandler(channelService)
-	voiceHandler := voice.NewVoiceHandler(voiceService, hub)
+	voiceHandler := voice.NewVoiceHandler(voiceService, hub, audioBuffer)
 
 	setupRoutes(userHandler, channelHandler, voiceHandler, authService, userService)
 

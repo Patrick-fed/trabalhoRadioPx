@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../../../core/websocket/websocket_service.dart';
 import '../../auth/services/auth_service.dart';
 import '../../channels/services/channel_service.dart';
+import '../services/audio_queue.dart';
 import '../services/audio_service.dart';
 import '../services/stream_audio_player.dart';
 import '../widgets/audio_player.dart';
@@ -35,6 +36,7 @@ class _VoiceScreenState extends State<VoiceScreen> {
   final StreamAudioPlayer _streamPlayer = StreamAudioPlayer();
   final AuthService _authService = AuthService();
   final ChannelService _channelService = ChannelService();
+  final AudioQueue _audioQueue = AudioQueue();
 
   bool _isTransmitting = false;
   bool _isReceiving = false;
@@ -44,9 +46,16 @@ class _VoiceScreenState extends State<VoiceScreen> {
   String? _currentSpeaker;
   String? _userId;
   StreamSubscription<Map<String, dynamic>>? _wsSubscription;
+  StreamSubscription<Uint8List>? _audioSub;
+  StreamSubscription<void>? _endOfSegmentSub;
   Timer? _reconnectTimer;
+  Timer? _receiveIdleTimer;
   int _reconnectAttempts = 0;
 
+  /// Última sequence de áudio recebida (RF06: base do replay pós-reconexão).
+  int _lastSequence = 0;
+
+  static const Duration _receiveIdleTimeout = Duration(milliseconds: 2500);
   static const int _maxReconnectAttempts = 5;
   static const List<Duration> _reconnectBackoff = [
     Duration(seconds: 2),
@@ -72,6 +81,10 @@ class _VoiceScreenState extends State<VoiceScreen> {
     } catch (_) {
       // Sessão de áudio indisponível: segue sem reprodução de som.
     }
+
+    _audioSub = _audioQueue.audioStream.listen(_onQueueAudio);
+    _endOfSegmentSub =
+        _audioQueue.endOfSegmentStream.listen((_) => _endReceiveSegment());
 
     await _connectWebSocket();
   }
@@ -102,6 +115,12 @@ class _VoiceScreenState extends State<VoiceScreen> {
     _wsSubscription =
         _webSocketService.messageStream.listen(_onWebSocketMessage);
 
+    // RF06: reconexão com histórico — pede o áudio perdido desde a última
+    // sequence (na primeira conexão _lastSequence é 0 e nada é solicitado).
+    if (_lastSequence > 0) {
+      _webSocketService.requestReplay(widget.channelId, _lastSequence);
+    }
+
     if (mounted) {
       setState(() {
         _connectionError = false;
@@ -117,6 +136,9 @@ class _VoiceScreenState extends State<VoiceScreen> {
         _handleAudioMessage(message);
         break;
       case 'disconnected':
+        // Zera o estado de recepção para o canal não ficar "ocupado" para
+        // sempre; a fila e a sequence são preservadas para o replay.
+        _endReceiveSegment();
         _scheduleReconnect();
         break;
       case 'error':
@@ -135,32 +157,57 @@ class _VoiceScreenState extends State<VoiceScreen> {
 
     final isPtt = payload['is_ptt'] == true;
     final audioRaw = payload['audio'];
+    final sequence = payload['sequence'];
+    if (sequence is int && sequence > _lastSequence) {
+      _lastSequence = sequence;
+    }
 
     if (audioRaw is String && audioRaw.isNotEmpty) {
-      final bytes = Uint8List.fromList(base64Decode(audioRaw));
-
-      if (!_streamPlayer.inSegment) {
-        if (mounted) {
-          setState(() {
-            _isReceiving = true;
-            _isChannelBusy = true;
-          });
-        }
-        _streamPlayer.startSegment();
-      }
-
-      _streamPlayer.feed(bytes);
+      _audioQueue.enqueue(
+        Uint8List.fromList(base64Decode(audioRaw)),
+        senderId: payload['user_id'] as String?,
+      );
+      _audioQueue.startPlayback();
     }
 
     if (!isPtt) {
-      _streamPlayer.endOfSegment();
+      _audioQueue.enqueueEndOfSegment();
+    }
+  }
+
+  void _onQueueAudio(Uint8List bytes) {
+    if (!_streamPlayer.inSegment) {
       if (mounted) {
         setState(() {
-          _isReceiving = false;
-          _isChannelBusy = false;
+          _isReceiving = true;
+          _isChannelBusy = true;
         });
       }
+      _streamPlayer.startSegment();
     }
+
+    _streamPlayer.feed(bytes);
+    _resetReceiveIdleTimer();
+  }
+
+  void _endReceiveSegment() {
+    _receiveIdleTimer?.cancel();
+    _receiveIdleTimer = null;
+    _streamPlayer.endOfSegment();
+    if (mounted) {
+      setState(() {
+        _isReceiving = false;
+        if (!_isTransmitting) {
+          _isChannelBusy = false;
+        }
+      });
+    }
+  }
+
+  /// Evita travar "recebendo" se o falante cair sem enviar is_ptt=false.
+  void _resetReceiveIdleTimer() {
+    _receiveIdleTimer?.cancel();
+    _receiveIdleTimer = Timer(_receiveIdleTimeout, _endReceiveSegment);
   }
 
   void _scheduleReconnect() {
@@ -305,7 +352,11 @@ class _VoiceScreenState extends State<VoiceScreen> {
   @override
   void dispose() {
     _reconnectTimer?.cancel();
+    _receiveIdleTimer?.cancel();
     _wsSubscription?.cancel();
+    _audioSub?.cancel();
+    _endOfSegmentSub?.cancel();
+    _audioQueue.dispose();
     _audioService.dispose();
     _streamPlayer.dispose();
     _webSocketService.dispose();
@@ -398,11 +449,8 @@ class _VoiceScreenState extends State<VoiceScreen> {
                 isPlaying: true,
                 currentSpeaker: _currentSpeaker,
                 onStop: () {
-                  _streamPlayer.endOfSegment();
-                  setState(() {
-                    _isReceiving = false;
-                    _isChannelBusy = false;
-                  });
+                  _audioQueue.clear();
+                  _endReceiveSegment();
                 },
               ),
             ] else ...[

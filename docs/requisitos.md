@@ -8,9 +8,10 @@ Este documento lista todos os requisitos funcionais e não funcionais do sistema
 > Nem todos os RF/RNF abaixo estão totalmente implementados na v1.
 > O mapeamento de lacunas e de escopo fica em `PROJECT_STATE.md` →
 > *Lacunas / Aderência aos Requisitos*. Em especial: RF02 (OAuth é trabalho futuro),
-> RF06 (buffer/replay não conectado), RNF05 (Casbin fora do escopo v1; TLS via túnel ngrok)
-> e RNF02/RNF03 (sem testes de carga). Já resolvidos: RF03 (um falante por vez, `voiceGuard`),
-> persistência PostgreSQL (Fase 1) e RNF06 (URL do servidor editável, Fase 3).
+> RNF05 (Casbin fora do escopo v1; TLS via túnel ngrok) e RNF02/RNF03 (sem testes de carga).
+> Já resolvidos: RF03 (um falante por vez, `voiceGuard`), RF06 (buffer/replay via
+> `request_replay`, 27/10), RF08 (fila com teto de 30s, 27/10), persistência
+> PostgreSQL (Fase 1) e RNF06 (URL do servidor editável, Fase 3).
 
 ## Requisitos Funcionais
 
@@ -99,6 +100,11 @@ O sistema deve armazenar áudio temporariamente:
 - Mensagens anteriores a 30s são descartadas
 - Replay automático ao reconectar
 
+**Implementação (27/10/2026):** o relay do WebSocket grava cada chunk no
+`AudioBufferService` (memória, 30s/10MB) e retransmite `sequence`; após
+reconexão o app envia `request_replay {room, since_sequence}` e recebe os
+segmentos perdidos por usuário, encerrados por um pacote `is_ptt=false`.
+
 ---
 
 ### RF07 - Gestão de Perfil
@@ -126,6 +132,11 @@ O sistema deve ordenar áudios:
 - Áudios reproduzidos em ordem de chegada
 - Áudio reproduzido é removido da fila
 - Fila limitada a 30 segundos de áudio
+
+**Implementação (27/10/2026):** `AudioQueue` (FIFO, ~960KB ≈ 30s de PCM16)
+entre o WebSocket e o player; fim de segmento entra como sentinel na própria
+fila. "Fila de prioridade" é atendida por ordem de chegada (FIFO) — prioridade
+por timestamp ficou fora de escopo.
 
 ---
 

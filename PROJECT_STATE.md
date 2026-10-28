@@ -6,7 +6,14 @@ Este documento registra o estado atual do projeto para facilitar a continuidade 
 
 ## Fase
 
-**Desenvolvimento - Protótipo Funcional + APK Android (27/10/2026 - Fase 4: documentação final)**
+**Desenvolvimento - Protótipo Funcional + APK Android (27/10/2026 - RF06/RF08: buffer + fila de áudio)**
+
+Em 27/10/2026 o buffer de 30s (RF06/RNF04) e a fila de áudio (RF08) foram
+conectados ao fluxo real: o relay do WebSocket grava os chunks no
+`AudioBufferService` (em memória) e retransmite `sequence`; após reconexão o
+app pede replay (`request_replay`, por usuário) e a recepção passa pela
+`AudioQueue` (teto 30s + sentinel). Inclui fix do voiceGuard no disconnect e
+timeout ocioso de 2,5s na recepção. Ver [CHANGELOG](CHANGELOG.md) de 27/10/2026.
 
 Em 27/10/2026 a Fase 4 fechou a documentação do plano aprovado: `banco-de-dados.md`
 reescrito para o schema pós-`002`, `decisoes.md` com DEC-012..015 (persistência
@@ -57,12 +64,13 @@ de e-mail duplicado no cadastro voltou a funcionar.
   (`backend/pkg/websocket/client.go:165-172`) — um segundo transmissor no mesmo
   canal é rejeitado. Resta validação em campo.
 
-- **RF06 / RNF04 — buffer de 30s e replay são código morto.**
-  `backend/internal/voice/buffer_service.go` e `buffer_manager.go` só são instanciados em testes
-  (`buffer_service_test.go`); nada disso está ligado ao WebSocket. No frontend,
-  `frontend/lib/features/voice/services/audio_queue.dart` e
-  `frontend/lib/features/voice/models/message_buffer_model.dart` **não são importados** em lugar
-  nenhum.
+- ~~**RF06 / RNF04 — buffer de 30s e replay são código morto.**~~
+  **Resolvido em 27/10/2026**: o relay do WebSocket grava no `AudioBufferService`
+  (via adapter DIP) e retransmite `sequence`; o cliente pede `request_replay`
+  após reconexão (por usuário, stateless). No frontend, `AudioQueue` virou a
+  fila de recepção com teto de 30s e sentinel (`voice_screen.dart`). Resta
+  validação E2E em campo com 2 clientes. `BufferManager` e
+  `message_buffer_model.dart` seguem como código morto (decisão registrada).
 
 - **Codec — divergência de documentação.** O pacote declara `Codec: "opus"`
   (`backend/internal/voice/websocket.go:44`), mas o áudio trafegado é **PCM16 cru** em base64, sem
@@ -175,7 +183,7 @@ Estes itens **não** serão implementados na v1 (persistência em PostgreSQL des
 
 ### Backend
 
-- ✅ Módulo Voice (handler, service, websocket; buffer parcial — ver Lacunas RF06)
+- ✅ Módulo Voice (handler, service, websocket; buffer/replay conectados em 27/10 — RF06)
 - ✅ Módulo Location (apenas `distance.go`; handler/service removidos em 27/10)
 - ✅ Módulo Channel (handler, service, stores)
 - ✅ Módulo Auth (service; JWT)
@@ -204,6 +212,32 @@ Estes itens **não** serão implementados na v1 (persistência em PostgreSQL des
 ---
 
 ## Última Alteração
+
+**27/10/2026 - RF06/RF08: buffer de 30s com replay e fila de áudio**
+
+**Data**: 27/10/2026
+
+**Descrição**:
+- **Backend**: interfaces `AudioBuffer`/`BufferedAudio` em `pkg/websocket`
+  (DIP, sem ciclo com `internal/voice`); relay grava no `AudioBufferService`
+  (novo `buffer_adapter.go`) e retransmite `sequence`/`timestamp`; novo case
+  `request_replay` (por usuário, membership checada, send não-bloqueante,
+  terminator `is_ptt=false`); `main.go` instancia o serviço + cleanup; **fix**:
+  `releaseVoice` libera o voiceGuard no disconnect (canal não fica preso
+  "ocupado")
+- **Frontend**: `AudioQueue` com teto de 30s (~960KB) e sentinel
+  (`endOfSegmentStream`); `voice_screen` enfileira o áudio do WS, rastreia
+  `_lastSequence`, pede replay após reconexão, zera estado de recepção ao cair
+  a conexão e encerra segmento ocioso após 2,5s; `websocket_service` ganha
+  `requestReplay`
+- **Testes**: `audio_queue_test.dart` (novos 5); suíte **57/57**; backend
+  build/vet/test verdes; `test-backend.ps1` intocado
+
+**Verificação**: `go build` + `go vet` + `go test ./...` verdes; `flutter test`
+57/57; `flutter analyze` sem novos issues. Pendente: E2E manual de replay com
+2 clientes. Detalhes em `CHANGELOG.md`.
+
+---
 
 **27/10/2026 - Fase 4: documentação final do plano aprovado**
 
@@ -553,7 +587,7 @@ frontend intocado. Detalhes em `CHANGELOG.md`.
 
 ## Próxima Tarefa
 
-**Plano aprovado — Fases 0, 1, 2, 3 e 4 concluídas**
+**Plano aprovado — Fases 0, 1, 2, 3 e 4 concluídas + RF06/RF08 (buffer/replay e fila de áudio)**
 
 ### Próximas Fases
 
@@ -564,6 +598,8 @@ frontend intocado. Detalhes em `CHANGELOG.md`.
 3. ~~**Fase 4 — Documentação**~~ — **Concluída em 27/10/2026** (`banco-de-dados.md`
    pós-002, DEC-012..015, `arquitetura.md` corrigido, `README.md` reescrito,
    `.env.example` limpo)
+4. ~~**RF06/RF08 — Buffer 30s + replay + fila**~~ — **Concluída em 27/10/2026**
+   (ver CHANGELOG da data; validação E2E em campo pendente)
 
 ---
 

@@ -100,6 +100,22 @@ class WebSocketService {
     _channel!.sink.add(message);
   }
 
+  /// RF06: pede ao servidor o áudio bufferizado desde a última sequence
+  /// conhecida (replay por usuário após reconexão).
+  void requestReplay(String roomId, int sinceSequence) {
+    if (!_isConnected || _channel == null) return;
+
+    final message = jsonEncode({
+      'type': 'request_replay',
+      'payload': {
+        'room': roomId,
+        'since_sequence': sinceSequence,
+      },
+    });
+
+    _channel!.sink.add(message);
+  }
+
   void sendJoinRoom(String roomId) {
     if (!_isConnected || _channel == null) return;
 

@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"log"
 	"time"
@@ -22,6 +23,22 @@ type VoiceGuard interface {
 	IsChannelBusy(channelID string) bool
 }
 
+// BufferedAudio is a replayable audio segment. The concrete AudioBufferService
+// lives in internal/voice and cannot be imported here (import cycle), so this
+// package only knows this DTO and the AudioBuffer interface (DIP).
+type BufferedAudio struct {
+	Audio     []byte
+	UserID    string
+	Sequence  int64
+	Timestamp time.Time
+}
+
+// AudioBuffer stores recent audio per channel for replay on reconnection (RF06).
+type AudioBuffer interface {
+	AddMessage(channelID, userID string, audioData []byte) (sequence int64, timestamp time.Time, err error)
+	GetMessages(channelID string, sinceSequence int64) []BufferedAudio
+}
+
 type Client struct {
 	hub        *Hub
 	conn       *websocket.Conn
@@ -30,6 +47,7 @@ type Client struct {
 	UserID     string
 	rooms      map[string]bool
 	voiceGuard VoiceGuard
+	buffer     AudioBuffer
 }
 
 type ClientMessage struct {
@@ -49,7 +67,7 @@ func NewClient(hub *Hub, conn *websocket.Conn, userID string) *Client {
 	}
 }
 
-func NewClientWithGuard(hub *Hub, conn *websocket.Conn, userID string, guard VoiceGuard) *Client {
+func NewClientWithGuard(hub *Hub, conn *websocket.Conn, userID string, guard VoiceGuard, buffer AudioBuffer) *Client {
 	return &Client{
 		hub:        hub,
 		conn:       conn,
@@ -58,11 +76,13 @@ func NewClientWithGuard(hub *Hub, conn *websocket.Conn, userID string, guard Voi
 		UserID:     userID,
 		rooms:      make(map[string]bool),
 		voiceGuard: guard,
+		buffer:     buffer,
 	}
 }
 
 func (c *Client) ReadPump() {
 	defer func() {
+		c.releaseVoice()
 		c.hub.UnregisterClient(c)
 		c.conn.Close()
 	}()
@@ -161,31 +181,158 @@ func (c *Client) handleMessage(msg ClientMessage) {
 			Audio  json.RawMessage `json:"audio"`
 			IsPTT  bool            `json:"is_ptt"`
 		}
-		if err := json.Unmarshal(msg.Payload, &payload); err == nil {
-			if c.voiceGuard != nil && payload.IsPTT {
-				if err := c.voiceGuard.StartTransmission(c.UserID, payload.Room); err != nil {
-					log.Printf("PTT start rejected for user %s in room %s: %v", c.UserID, payload.Room, err)
-					return
-				}
-			} else if c.voiceGuard != nil && !payload.IsPTT {
-				c.voiceGuard.StopTransmission(c.UserID, payload.Room)
-			}
-			audioPayload, _ := json.Marshal(map[string]interface{}{
-				"audio":    payload.Audio,
-				"is_ptt":   payload.IsPTT,
-				"user_id":  c.UserID,
-				"sender":   c.ID,
-			})
-			c.hub.BroadcastToRoom(payload.Room, Message{
-				Type:    "audio",
-				Payload: audioPayload,
-				Sender:  c,
-			})
+		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+			return
 		}
+		if c.voiceGuard != nil && payload.IsPTT {
+			if err := c.voiceGuard.StartTransmission(c.UserID, payload.Room); err != nil {
+				log.Printf("PTT start rejected for user %s in room %s: %v", c.UserID, payload.Room, err)
+				return
+			}
+		} else if c.voiceGuard != nil && !payload.IsPTT {
+			c.voiceGuard.StopTransmission(c.UserID, payload.Room)
+		}
+
+		// RF06: keep the last 30s of audio in memory for replay. Buffer
+		// failures never block the live relay.
+		var sequence int64
+		var timestamp time.Time
+		if c.buffer != nil && payload.IsPTT && len(payload.Audio) > 0 {
+			if audioBytes, err := decodeBase64Audio(payload.Audio); err == nil && len(audioBytes) > 0 {
+				seq, ts, err := c.buffer.AddMessage(payload.Room, c.UserID, audioBytes)
+				if err != nil {
+					log.Printf("Audio buffer error in room %s: %v", payload.Room, err)
+				} else {
+					sequence, timestamp = seq, ts
+				}
+			}
+		}
+
+		out := map[string]interface{}{
+			"audio":   payload.Audio,
+			"is_ptt":  payload.IsPTT,
+			"user_id": c.UserID,
+			"sender":  c.ID,
+		}
+		if sequence > 0 {
+			out["sequence"] = sequence
+			out["timestamp"] = timestamp
+		}
+		audioPayload, _ := json.Marshal(out)
+		c.hub.BroadcastToRoom(payload.Room, Message{
+			Type:    "audio",
+			Payload: audioPayload,
+			Sender:  c,
+		})
+
+	case "request_replay":
+		var payload struct {
+			Room          string `json:"room"`
+			SinceSequence int64  `json:"since_sequence"`
+		}
+		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+			return
+		}
+		c.sendReplay(payload.Room, payload.SinceSequence)
 
 	default:
 		log.Printf("Unknown message type: %s", msg.Type)
 	}
+}
+
+// releaseVoice frees the PTT lock if this client was the active speaker in any
+// of its rooms, so an abrupt disconnect no longer leaves the channel busy.
+func (c *Client) releaseVoice() {
+	if c.voiceGuard == nil {
+		return
+	}
+
+	c.hub.mu.RLock()
+	rooms := make([]string, 0, len(c.rooms))
+	for room := range c.rooms {
+		rooms = append(rooms, room)
+	}
+	c.hub.mu.RUnlock()
+
+	for _, room := range rooms {
+		if err := c.voiceGuard.StopTransmission(c.UserID, room); err == nil {
+			log.Printf("Released PTT lock for user %s in room %s on disconnect", c.UserID, room)
+		}
+	}
+}
+
+// sendReplay pushes buffered audio newer than sinceSequence to this client
+// only (per-user replay via sequence numbers), followed by a terminator
+// packet that closes the segment on the frontend.
+func (c *Client) sendReplay(room string, sinceSequence int64) {
+	if c.buffer == nil {
+		return
+	}
+
+	c.hub.mu.RLock()
+	_, inRoom := c.rooms[room]
+	c.hub.mu.RUnlock()
+	if !inRoom {
+		return
+	}
+
+	msgs := c.buffer.GetMessages(room, sinceSequence)
+	for _, m := range msgs {
+		p, err := json.Marshal(map[string]interface{}{
+			"audio":       base64.StdEncoding.EncodeToString(m.Audio),
+			"is_ptt":      true,
+			"user_id":     m.UserID,
+			"sender":      "replay",
+			"sequence":    m.Sequence,
+			"timestamp":   m.Timestamp,
+			"is_replayed": true,
+		})
+		if err != nil {
+			continue
+		}
+		if !c.safeSend(Message{Type: "audio", Payload: p}) {
+			log.Printf("Replay truncated for client %s in room %s: send buffer full", c.ID, room)
+			return
+		}
+	}
+
+	if len(msgs) == 0 {
+		return
+	}
+	term, _ := json.Marshal(map[string]interface{}{
+		"audio":       "",
+		"is_ptt":      false,
+		"sender":      "replay",
+		"is_replayed": true,
+	})
+	if !c.safeSend(Message{Type: "audio", Payload: term}) {
+		log.Printf("Replay terminator dropped for client %s in room %s", c.ID, room)
+	}
+}
+
+// safeSend sends without blocking and turns "send on closed channel" (the hub
+// dropped a slow consumer mid-replay) into false instead of a panic.
+func (c *Client) safeSend(m Message) (ok bool) {
+	defer func() {
+		if recover() != nil {
+			ok = false
+		}
+	}()
+	select {
+	case c.send <- m:
+		return true
+	default:
+		return false
+	}
+}
+
+// decodeBase64Audio extracts the base64 string from the raw JSON audio field.
+func decodeBase64Audio(raw json.RawMessage) ([]byte, error) {
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return nil, err
+	}
+	return base64.StdEncoding.DecodeString(s)
 }
 
 func generateClientID() string {

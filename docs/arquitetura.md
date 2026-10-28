@@ -99,9 +99,10 @@ backend/
 │   │   ├── handler.go
 │   │   ├── service.go
 │   │   ├── websocket.go                # WebSocket handling
-│   │   ├── buffer_manager.go           # Buffer temporário (não conectado)
+│   │   ├── buffer_adapter.go           # Adapta buffer_service à interface do WS (DIP)
+│   │   ├── buffer_manager.go           # Buffer por canal (não conectado, fora de escopo)
 │   │   ├── buffer_model.go
-│   │   └── buffer_service.go
+│   │   └── buffer_service.go           # Buffer de 30s conectado ao relay (RF06)
 │   │
 │   ├── location/
 │   │   └── distance.go                 # EarthRadiusKm + CalculateDistance
@@ -361,11 +362,10 @@ lib/
 ## Fluxo de Conexão (Resiliência)
 
 > **Status (27/10/2026)**: a reconexão com backoff existe no app (5 tentativas,
-> validação em campo pendente), mas o **buffer de replay abaixo está como
-> concepção**: o código de buffer existe (`internal/voice/buffer_*`,
-> `message_buffer_model.dart`) mas **não está conectado ao WebSocket** — pacotes
-> não são armazenados nem reproduzidos após reconexão (RF06/RNF04, ver
-> `PROJECT_STATE.md`).
+> validação em campo pendente) e o **buffer de replay está conectado**: o relay
+> grava no `AudioBufferService` (memória, 30s) com `sequence` no payload, e após
+> reconexão o app envia `request_replay` para receber o áudio perdido (RF06/RNF04).
+> `BufferManager` e `message_buffer_model.dart` seguem sem uso (fora de escopo).
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -384,16 +384,19 @@ lib/
 │  Iniciar tentativas de reconexão                            │
 │       │                                                     │
 │       ▼                                                     │
-│  Áudio recebido armazenado em buffer (30s)                  │
+│  Servidor mantém áudio dos últimos 30s em buffer            │
 │       │                                                     │
 │       ▼                                                     │
 │  Reconexão bem-sucedida                                     │
 │       │                                                     │
 │       ▼                                                     │
-│  Replay automático de mensagens perdidas                    │
+│  request_replay {room, since_sequence} → catch-up          │
 │       │                                                     │
 │       ▼                                                     │
-│  Buffer limpo após replay                                   │
+│  Segmentos perdidos reenfileirados (AudioQueue)             │
+│       │                                                     │
+│       ▼                                                     │
+│  Buffer do servidor expira por idade (30s)                   │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
