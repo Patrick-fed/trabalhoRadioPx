@@ -2,7 +2,7 @@
 
 **Branch**: `feature-login` | **Date**: 27/10/2026 | **Spec**: `docs/requisitos.md` → RF09
 **Input**: Decisões aprovadas em 27/10/2026 (SPA embed, métricas + gestão de usuários, `is_admin` + `ADMIN_EMAILS`)
-**Status (02/11/2026)**: Fases A–E concluídas; Fase F (commit/push) pendente de aprovação
+**Status (02/11/2026)**: Fases A–F concluídas — commit `8d4af6b` em `feature-login`, `dev` e `main` (sync FF)
 
 ## Summary
 
@@ -132,9 +132,9 @@ backend/
 - `AGENTS.md`: seção Admin em "Regras de API"
 - `CHANGELOG.md` (02/11/2026) + `PROJECT_STATE.md`
 
-### Fase F — Entrega ⏳ (pendente de aprovação)
-- Commit `feat(admin): painel administrativo com metricas e gestao de usuarios (RF09)`
-- Push `feature-login` → sync FF `dev` e `main` (padrão aprovado)
+### Fase F — Entrega ✅ (02/11/2026)
+- Commit `feat(admin): painel administrativo com metricas e gestao de usuarios (RF09)` → `8d4af6b`
+- Push `feature-login` → sync FF `dev` e `main` (mesmo hash nos três)
 
 ## Riscos / Pendências
 

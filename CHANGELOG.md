@@ -106,7 +106,8 @@ verificação → documentação).
 - Token de usuário suspenso segue válido até expirar (24h) — efeito garantido
   no próximo login; revogação ativa fica para futuro
 - Validação em campo do painel no navegador (localhost e via LAN)
-- Fase F do plano: commit `feat(admin): ...` + push (pendente de aprovação)
+- ~~Fase F do plano: commit `feat(admin): ...` + push~~ — **concluída em
+  02/11/2026** (`8d4af6b` em `feature-login`, `dev` e `main`)
 - Escopo fora da v1: gestão de canais, kick, auditoria, roles/Casbin
 
 ---

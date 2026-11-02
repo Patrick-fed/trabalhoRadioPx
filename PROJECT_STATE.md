@@ -659,7 +659,8 @@ frontend intocado. Detalhes em `CHANGELOG.md`.
    (validação E2E em campo pendente)
 5. ~~**RF09 — Painel administrativo**~~ — **Concluída em 02/11/2026**
    (`specs/002-admin-panel/`: is_admin + localização passiva + APIs + SPA;
-   validação em campo do painel pendente; commit Fase 6 pendente)
+   commit `8d4af6b` em `feature-login`, `dev` e `main`; validação em campo
+   do painel pendente)
 
 ---
 
