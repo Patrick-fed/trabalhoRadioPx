@@ -2,6 +2,7 @@ package user
 
 import (
 	"sync"
+	"time"
 )
 
 // MemoryUserStore keeps users in RAM. It backs the unit tests and keeps the
@@ -103,4 +104,20 @@ func (s *MemoryUserStore) List() ([]*User, error) {
 		users = append(users, user)
 	}
 	return users, nil
+}
+
+func (s *MemoryUserStore) UpdateLastLocation(userID string, lat, lng float64, at time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	user, exists := s.users[userID]
+	if !exists {
+		return ErrUserNotFound
+	}
+
+	latCopy, lngCopy, atCopy := lat, lng, at
+	user.LastLat = &latCopy
+	user.LastLng = &lngCopy
+	user.LastLocationAt = &atCopy
+	return nil
 }

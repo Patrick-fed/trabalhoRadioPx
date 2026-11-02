@@ -140,6 +140,16 @@ flutter test
 > Localização não tem endpoint próprio (removido em 27/10/2026): o app envia as
 > coordenadas do GPS nos payloads da API de canais.
 
+### Admin (RF09 — requer `is_admin=true`)
+
+- `GET /api/v1/admin/stats` - Métricas do sistema
+- `GET /api/v1/admin/users` - Lista de usuários (sem `password_hash`)
+- `PATCH /api/v1/admin/users/{id}` - `{"is_active"|"is_admin": bool}`
+- `DELETE /api/v1/admin/users/{id}` - Excluir usuário
+- `GET /admin` - Painel web (SPA embutida, sem auth; API continua protegida)
+- Bootstrap: env `ADMIN_EMAILS` (csv) promove no boot; admin não pode
+  alterar a si mesmo (403); suspensão invalida o próximo login (401)
+
 ### WebSocket (Tempo Real)
 
 - `ws://localhost:8080/ws/audio/{channel_id}` - Streaming de áudio

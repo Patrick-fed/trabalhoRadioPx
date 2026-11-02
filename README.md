@@ -63,11 +63,28 @@ DB_NAME=radiopx
 DB_USER=postgres
 DB_PASSWORD=your-password
 DB_SSLMODE=disable           # enable em produção com TLS
+ADMIN_EMAILS=                # csv de e-mails promovidos a admin no boot (RF09)
 ```
 
 > `API_BASE_URL` no app é passada via `--dart-define` no **build** e pode ser
 > alterada dentro do app (Login → "Configurar servidor" ou Perfil → "Servidor").
 > A URL WebSocket é derivada automaticamente (`https:` → `wss:`).
+
+### Painel Administrativo (RF09)
+
+```bash
+# 1. Defina no backend/.env (após cópia do .env.example):
+ADMIN_EMAILS=coordenador@exemplo.com
+
+# 2. Suba o backend e abra no navegador:
+#    http://localhost:8080/admin
+```
+
+- Login com o e-mail listado em `ADMIN_EMAILS` (ou usuário promovido via
+  `PATCH /api/v1/admin/users/{id}`); a promoção no boot é idempotente.
+- Dashboard (métricas, refresh 10s) + lista de usuários com suspender,
+  reativar, promover/demover admin, excluir e **última localização**
+  (link OpenStreetMap). Ver `docs/decisoes.md` → DEC-017/DEC-018.
 
 ### Testes
 

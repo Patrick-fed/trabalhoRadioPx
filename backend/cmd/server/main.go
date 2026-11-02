@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/radiopx/backend/internal/admin"
 	"github.com/radiopx/backend/internal/auth"
 	"github.com/radiopx/backend/internal/channel"
 	"github.com/radiopx/backend/internal/db"
@@ -104,11 +105,31 @@ func main() {
 	audioBuffer := voice.NewAudioBufferService(nil)
 	audioBuffer.StartCleanupRoutine()
 
-	userHandler := user.NewUserHandler(userService)
-	channelHandler := channel.NewChannelHandler(channelService)
-	voiceHandler := voice.NewVoiceHandler(voiceService, hub, audioBuffer)
+	if raw := os.Getenv("ADMIN_EMAILS"); raw != "" {
+		promoted, err := userService.BootstrapAdmins(strings.Split(raw, ","))
+		if err != nil {
+			log.Printf("ADMIN_EMAILS bootstrap: %v", err)
+		}
+		for _, email := range promoted {
+			log.Printf("ADMIN_EMAILS: promoted %s to admin", email)
+		}
+	}
 
-	setupRoutes(userHandler, channelHandler, voiceHandler, authService, userService)
+	userHandler := user.NewUserHandler(userService)
+	channelHandler := channel.NewChannelHandler(channelService, userService)
+	voiceHandler := voice.NewVoiceHandler(voiceService, hub, audioBuffer)
+	adminHandler := admin.NewHandler(userService, admin.StatsSource{
+		Users:    userService,
+		Channels: channelStore,
+		Hub:      hub,
+		Voice:    voiceService,
+	})
+	adminSPA, err := admin.NewSPAHandler()
+	if err != nil {
+		log.Fatalf("Admin SPA: %v", err)
+	}
+
+	setupRoutes(userHandler, channelHandler, voiceHandler, authService, userService, adminHandler, adminSPA)
 
 	c := cors.New(cors.Options{
 		AllowedOrigins:   []string{"http://localhost:*", "https://*.ngrok-free.app", "https://*.ngrok-free.dev"},
@@ -134,6 +155,8 @@ func setupRoutes(
 	voiceHandler *voice.VoiceHandler,
 	authService *auth.AuthService,
 	userService *user.UserService,
+	adminHandler *admin.Handler,
+	adminSPA http.Handler,
 ) {
 	http.HandleFunc("/health", healthHandler)
 
@@ -212,6 +235,20 @@ func setupRoutes(
 
 	protectedWithAuth := middleware.AuthMiddleware(authService)(protected)
 
+	// Admin API: same injector chain, then RequireAdmin (DB check per request).
+	adminProtected := middleware.RequireAdmin(adminHandler.IsAdmin)(adminHandler)
+	adminWithAuth := middleware.AuthMiddleware(authService)(adminProtected)
+	adminInjector := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token := extractToken(r)
+		if token != "" {
+			userID, err := authService.ValidateAccessToken(token)
+			if err == nil && userID != "" {
+				r.Header.Set("X-User-ID", userID)
+			}
+		}
+		adminWithAuth.ServeHTTP(w, r)
+	})
+
 	injector := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := extractToken(r)
 		if token != "" {
@@ -230,6 +267,10 @@ func setupRoutes(
 	http.Handle("/api/v1/channels/", injector)
 	http.Handle("/api/v1/user/profile", injector)
 	http.Handle("/api/v1/user/change-password", injector)
+	http.Handle("/api/v1/admin/", adminInjector)
+	// SPA estática (login/dashboard/usuários) — sem auth; as APIs continuam protegidas.
+	http.Handle("/admin", adminSPA)
+	http.Handle("/admin/", adminSPA)
 
 	http.Handle("/ws/audio/", webSocketAuthMiddleware(authService, http.HandlerFunc(voiceHandler.HandleWebSocket)))
 }

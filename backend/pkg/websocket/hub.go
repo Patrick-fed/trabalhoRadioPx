@@ -132,3 +132,10 @@ func (h *Hub) GetClientCount() int {
 	defer h.mu.RUnlock()
 	return len(h.clients)
 }
+
+// GetLiveRoomCount returns how many rooms currently have at least one client.
+func (h *Hub) GetLiveRoomCount() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.rooms)
+}

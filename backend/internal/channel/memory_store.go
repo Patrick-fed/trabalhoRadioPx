@@ -192,3 +192,9 @@ func (s *MemoryChannelStore) Delete(id string) error {
 	delete(s.channelUsers, id)
 	return nil
 }
+
+func (s *MemoryChannelStore) Count() (int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.channels), nil
+}

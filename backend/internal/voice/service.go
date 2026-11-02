@@ -148,6 +148,21 @@ func (vs *VoiceService) CleanupInactiveChannels(timeout time.Duration) {
 	}
 }
 
+// ActiveChannelsCount returns how many channels currently have a live
+// transmission state (used by the admin dashboard).
+func (vs *VoiceService) ActiveChannelsCount() int {
+	vs.hub.mu.RLock()
+	defer vs.hub.mu.RUnlock()
+
+	count := 0
+	for _, channel := range vs.hub.channels {
+		if channel.IsTransmitting {
+			count++
+		}
+	}
+	return count
+}
+
 var (
 	ErrChannelBusy     = &VoiceError{Code: "CHANNEL_BUSY", Message: "Channel is currently in use"}
 	ErrChannelNotFound = &VoiceError{Code: "CHANNEL_NOT_FOUND", Message: "Channel not found"}

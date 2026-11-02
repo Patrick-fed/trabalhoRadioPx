@@ -18,6 +18,8 @@ var (
 	ErrPasswordRequired   = errors.New("a senha é obrigatória")
 	ErrInvalidEmail       = errors.New("e-mail inválido")
 	ErrPasswordTooShort   = errors.New("a senha deve ter pelo menos 8 caracteres")
+	ErrUserInactive       = errors.New("usuário suspenso")
+	ErrAdminSelfAction    = errors.New("você não pode alterar seu próprio status")
 )
 
 const minPasswordLength = 8
@@ -123,7 +125,74 @@ func (s *UserService) Authenticate(email, password string) (*User, error) {
 		return nil, ErrInvalidCredentials
 	}
 
+	if !foundUser.IsActive {
+		return nil, ErrUserInactive
+	}
+
 	return foundUser, nil
+}
+
+// SetUserActive suspends or reactivates a user. The acting admin cannot change
+// their own status (ErrAdminSelfAction), so a session can never lock itself out.
+func (s *UserService) SetUserActive(actorID, targetID string, active bool) error {
+	if actorID == targetID {
+		return ErrAdminSelfAction
+	}
+
+	target, err := s.store.GetByID(targetID)
+	if err != nil {
+		return err
+	}
+
+	target.IsActive = active
+	target.UpdatedAt = time.Now()
+	return s.store.Update(target)
+}
+
+// SetUserAdmin grants or revokes the admin flag. Same self-guard as SetUserActive:
+// an admin cannot demote (or promote) themselves.
+func (s *UserService) SetUserAdmin(actorID, targetID string, admin bool) error {
+	if actorID == targetID {
+		return ErrAdminSelfAction
+	}
+
+	target, err := s.store.GetByID(targetID)
+	if err != nil {
+		return err
+	}
+
+	target.IsAdmin = admin
+	target.UpdatedAt = time.Now()
+	return s.store.Update(target)
+}
+
+// BootstrapAdmins promotes existing users whose e-mails appear in emails to
+// admin. Idempotent: already-admin users and unknown e-mails are skipped, so
+// the call is safe on every boot. Returns the e-mails actually promoted.
+func (s *UserService) BootstrapAdmins(emails []string) ([]string, error) {
+	promoted := make([]string, 0, len(emails))
+	for _, raw := range emails {
+		email := normalizeEmail(raw)
+		if email == "" {
+			continue
+		}
+
+		found, err := s.store.GetByEmail(email)
+		if err != nil {
+			continue
+		}
+		if found.IsAdmin {
+			continue
+		}
+
+		found.IsAdmin = true
+		found.UpdatedAt = time.Now()
+		if err := s.store.Update(found); err != nil {
+			return promoted, err
+		}
+		promoted = append(promoted, found.Email)
+	}
+	return promoted, nil
 }
 
 func (s *UserService) ChangePassword(userID, oldPassword, newPassword string) error {
@@ -181,6 +250,12 @@ func (s *UserService) CreateOAuthUser(email, name, provider, providerID string) 
 
 func (s *UserService) ListUsers() ([]*User, error) {
 	return s.store.List()
+}
+
+// UpdateLastLocation persists the user's last-known position (passive capture,
+// RF09). Best-effort callers should log and ignore errors.
+func (s *UserService) UpdateLastLocation(userID string, lat, lng float64, at time.Time) error {
+	return s.store.UpdateLastLocation(userID, lat, lng, at)
 }
 
 func generateUserID() string {

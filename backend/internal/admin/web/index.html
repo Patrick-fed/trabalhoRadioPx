@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RadioPX — Admin</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Login -->
+  <div id="login-view" class="view">
+    <div class="login-card">
+      <h1>RadioPX</h1>
+      <p class="subtitle">Painel Administrativo</p>
+      <form id="login-form">
+        <label for="email">E-mail</label>
+        <input type="email" id="email" autocomplete="username" required>
+        <label for="password">Senha</label>
+        <input type="password" id="password" autocomplete="current-password" required>
+        <button type="submit" id="login-btn">Entrar</button>
+        <p id="login-error" class="error" hidden></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- App -->
+  <div id="app-view" class="view" hidden>
+    <header>
+      <div class="brand">
+        <span class="logo">RadioPX</span>
+        <span class="tag">Admin</span>
+      </div>
+      <nav>
+        <button class="nav-btn active" data-tab="dashboard">Dashboard</button>
+        <button class="nav-btn" data-tab="users">Usuários</button>
+      </nav>
+      <div class="header-right">
+        <span id="admin-email" class="admin-email"></span>
+        <button id="logout-btn" class="btn-ghost">Sair</button>
+      </div>
+    </header>
+
+    <main>
+      <!-- Dashboard -->
+      <section id="dashboard-tab" class="tab">
+        <div class="cards" id="stats-cards">
+          <div class="card"><span class="card-label">Usuários</span><span class="card-value" id="stat-users">—</span></div>
+          <div class="card"><span class="card-label">Ativos</span><span class="card-value" id="stat-active">—</span></div>
+          <div class="card"><span class="card-label">Canais</span><span class="card-value" id="stat-channels">—</span></div>
+          <div class="card"><span class="card-label">Conexões WS</span><span class="card-value" id="stat-ws">—</span></div>
+          <div class="card"><span class="card-label">Salas ativas</span><span class="card-value" id="stat-rooms">—</span></div>
+          <div class="card"><span class="card-label">Transmitindo</span><span class="card-value" id="stat-tx">—</span></div>
+        </div>
+        <p class="hint">Atualização automática a cada 10s.</p>
+      </section>
+
+      <!-- Usuários -->
+      <section id="users-tab" class="tab" hidden>
+        <div class="toolbar">
+          <input type="search" id="user-search" placeholder="Buscar por nome ou e-mail…">
+          <button id="refresh-users" class="btn-secondary">Atualizar</button>
+        </div>
+        <div class="table-wrap">
+          <table id="users-table">
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>E-mail</th>
+                <th>Status</th>
+                <th>Papel</th>
+                <th>Localização</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="users-tbody">
+              <tr><td colspan="6" class="empty">Carregando…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p id="users-error" class="error" hidden></p>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" hidden></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

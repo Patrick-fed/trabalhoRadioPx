@@ -231,6 +231,34 @@ ALTER TABLE channels ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()
 CREATE INDEX IF NOT EXISTS idx_channels_location ON channels(latitude, longitude);
 ```
 
+### 003_admin_users.sql (02/11/2026)
+
+Identidade administrativa do RF09 (painel `/admin`):
+
+```sql
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE INDEX IF NOT EXISTS idx_users_is_admin ON users(is_admin) WHERE is_admin;
+```
+
+- `is_admin` é a fonte da verdade (JWT sem novas claims — DEC-017);
+  `RequireAdmin` consulta o banco a cada request.
+- Bootstrap idempotente no boot: env `ADMIN_EMAILS` (csv) promove os listados.
+
+### 004_user_last_location.sql (02/11/2026)
+
+Última posição conhecida do usuário, capturada de forma **passiva** (DEC-018):
+
+```sql
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_lat DOUBLE PRECISION;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_lng DOUBLE PRECISION;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_location_at TIMESTAMP;
+```
+
+- Ponteiros/nullable: usuário que nunca enviou coordenadas fica `NULL`
+  (painel exibe "—").
+- **Sem histórico** (só a última posição) — LGPD-friendly; áudio segue nunca
+  persistido (RNF01).
+
 ## Regras de Negócio
 
 ### Alocação de Canais

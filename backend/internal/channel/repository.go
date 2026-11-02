@@ -21,6 +21,7 @@ type ChannelStore interface {
 	ListNearby(latitude, longitude, radiusKm float64) ([]*Channel, error)
 	Update(ch *Channel) error
 	Delete(id string) error
+	Count() (int, error)
 }
 
 // PGChannelStore persists channels and memberships in PostgreSQL. UserCount is
@@ -263,6 +264,12 @@ func (s *PGChannelStore) Delete(id string) error {
 		return ErrChannelNotFound
 	}
 	return nil
+}
+
+func (s *PGChannelStore) Count() (int, error) {
+	var count int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM channels`).Scan(&count)
+	return count, err
 }
 
 type rowScanner interface {

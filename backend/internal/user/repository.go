@@ -3,6 +3,7 @@ package user
 import (
 	"database/sql"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -17,9 +18,10 @@ type UserStore interface {
 	Update(user *User) error
 	Delete(id string) error
 	List() ([]*User, error)
+	UpdateLastLocation(userID string, lat, lng float64, at time.Time) error
 }
 
-const userColumns = `id, email, password_hash, name, avatar, provider, provider_id, is_active, created_at, updated_at`
+const userColumns = `id, email, password_hash, name, avatar, provider, provider_id, is_active, is_admin, last_lat, last_lng, last_location_at, created_at, updated_at`
 
 // PGUserStore persists users in PostgreSQL.
 type PGUserStore struct {
@@ -32,10 +34,10 @@ func NewPGUserStore(database *sql.DB) *PGUserStore {
 
 func (s *PGUserStore) Create(user *User) error {
 	_, err := s.db.Exec(`
-		INSERT INTO users (id, email, password_hash, name, avatar, provider, provider_id, is_active, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		INSERT INTO users (id, email, password_hash, name, avatar, provider, provider_id, is_active, is_admin, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
 		user.ID, user.Email, user.Password, user.Name, user.Avatar,
-		user.Provider, user.ProviderID, user.IsActive, user.CreatedAt, user.UpdatedAt,
+		user.Provider, user.ProviderID, user.IsActive, user.IsAdmin, user.CreatedAt, user.UpdatedAt,
 	)
 	if isUniqueViolation(err) {
 		return ErrUserAlreadyExists
@@ -62,10 +64,10 @@ func (s *PGUserStore) Update(user *User) error {
 	result, err := s.db.Exec(`
 		UPDATE users
 		SET name = $1, email = $2, avatar = $3, provider = $4, provider_id = $5,
-		    is_active = $6, password_hash = $7, updated_at = $8
-		WHERE id = $9`,
+		    is_active = $6, is_admin = $7, password_hash = $8, updated_at = $9
+		WHERE id = $10`,
 		user.Name, user.Email, user.Avatar, user.Provider, user.ProviderID,
-		user.IsActive, user.Password, user.UpdatedAt, user.ID,
+		user.IsActive, user.IsAdmin, user.Password, user.UpdatedAt, user.ID,
 	)
 	if isUniqueViolation(err) {
 		return ErrUserAlreadyExists
@@ -135,12 +137,36 @@ func scanUser(row rowScanner) (*User, error) {
 	var user User
 	err := row.Scan(
 		&user.ID, &user.Email, &user.Password, &user.Name, &user.Avatar,
-		&user.Provider, &user.ProviderID, &user.IsActive, &user.CreatedAt, &user.UpdatedAt,
+		&user.Provider, &user.ProviderID, &user.IsActive, &user.IsAdmin,
+		&user.LastLat, &user.LastLng, &user.LastLocationAt,
+		&user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
 	}
 	return &user, nil
+}
+
+// UpdateLastLocation overwrites the single last-known position (no history).
+// Unknown userID affects zero rows and returns ErrUserNotFound.
+func (s *PGUserStore) UpdateLastLocation(userID string, lat, lng float64, at time.Time) error {
+	result, err := s.db.Exec(`
+		UPDATE users
+		SET last_lat = $1, last_lng = $2, last_location_at = $3
+		WHERE id = $4`,
+		lat, lng, at, userID,
+	)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return ErrUserNotFound
+	}
+	return nil
 }
 
 func isUniqueViolation(err error) bool {

@@ -432,3 +432,76 @@ de fim de segmento. O `BufferManager` permanece fora do fluxo; as flags
 - Frontend: `AudioQueue` (reescrita), `voice_screen` (fila + `_lastSequence`
   + replay), `websocket_service.requestReplay`; fixes de disconnect e ociosidade.
 - Pendente: validação E2E com 2 clientes (`test-backend.ps1` não cobre WS).
+
+## DEC-017 — Painel administrativo via SPA embutida (RF09)
+
+**Data**: 02/11/2026
+
+**Decisão**: o painel admin é uma SPA vanilla (HTML/JS/CSS) embutida no backend
+com `//go:embed`, servida em `/admin`. Identidade administrativa = coluna
+`users.is_admin` (migração 003) + bootstrap idempotente no boot pela env
+`ADMIN_EMAILS` (csv). Autorização: middleware `RequireAdmin` **consultando o
+banco a cada request** (JWT sem novas claims — promoção vale sem novo token).
+APIs: `GET /api/v1/admin/{stats,users}`, `PATCH|DELETE /api/v1/admin/users/{id}`
+(protegidas por cadeia injector → Auth → RequireAdmin).
+
+**Motivo**:
+- Monolito modular: sem Flutter Web, sem tela no app mobile, sem projeto
+  separado nem nova dependência.
+- `is_admin` no banco é a fonte da verdade; claims JWT estáticas dariam
+  promoção/demote stale até o token expirar (24h).
+- Bootstrap por env evita "quem sobe primeiro vira admin" e mantém o
+  segredo fora do repositório (apenas `.env.example` com valor vazio).
+- Guardas de serviço: `ErrAdminSelfAction` impede suspender/demover/excluir a
+  si mesmo; `Authenticate` rejeita `!IsActive` (suspensão passa a valer no
+  login; resposta vira 401 genérico para não vazar estado).
+
+**Alternativas Consideradas**:
+- Claims `is_admin` no JWT: promoção stale até expirar o token.
+- Casbin/RNF05: fora do escopo v1 (escopo decidido em 27/10).
+- Flutter Web: peso e build separado sem ganho para uso admin esporádico.
+- Endpoint de promoção por CLI: menos auditável e sem UX para o coordenador.
+
+**Impacto**:
+- Backend: `internal/admin/` (handler + SPA + testes), `middleware.RequireAdmin`,
+  `user/service` (SetUserActive/SetUserAdmin/BootstrapAdmins/Authenticate),
+  getters `hub.GetLiveRoomCount` e `VoiceService.ActiveChannelsCount`,
+  rotas em `main.go`, env `ADMIN_EMAILS`.
+- Riscos aceitos: token de suspenso segue válido até expirar (24h) — efeito
+  garantido no próximo login; revogação ativa fica para futuro.
+- Fora da v1: gestão de canais, moderação de voz (kick), auditoria, roles.
+
+## DEC-018 — Localização passiva no painel admin (RF09)
+
+**Data**: 02/11/2026
+
+**Decisão**: capturar a **última** posição do usuário de forma **passiva**,
+reaproveitando o `lat`/`lng` que o app **já envia** em
+`POST /channels/nearby` e `POST /channels`. Colunas novas em `users`
+(migração 004): `last_lat`, `last_lng`, `last_location_at` (ponteiros,
+nullable). A gravação é best-effort (falha não derruba a request). O painel
+exibe link para OpenStreetMap; sem histórico, sem mapa embutido, sem endpoint
+próprio de localização.
+
+**Motivo**:
+- O app mobile não muda: já envia coordenadas para descoberta de canais
+  (RF04); só o backend passa a persistir a última.
+- Sem histórico = LGPD-friendly e RNF01 intacto (só posição, nunca áudio).
+- Lista + link OSM atende "ver onde estão" sem custo de mapa embutido
+  (escopo aprovado em 27/10).
+- `recordLocation` é no-op quando `LocationUpdater` não é injetado (testes
+  e setups mínimos continuam verdes).
+
+**Alternativas Consideradas**:
+- Endpoint dedicado `POST /location` + mudanças no app: escopo extra sem
+  necessidade (o app já manda lat/lng).
+- Histórico/trilha: retenção de dados geoespaciais sem requisito.
+- Mapa embutido (Leaflet/Google): dependência externa e chave de API;
+  link OSM resolve com zero custo.
+
+**Impacto**:
+- Migração `004_user_last_location.sql`; model/repo/service com ponteiros;
+  `channel/handler.go` com `LocationUpdater` + `recordLocation` em
+  nearby/create; coluna "Localização" na SPA com link OSM.
+- Última posição fica obsoleta se o usuário parar de usar o app — exibição
+  com data/hora para o admin avaliar a frescor.

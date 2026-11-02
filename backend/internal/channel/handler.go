@@ -3,18 +3,40 @@ package channel
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
+
+// LocationUpdater records the caller's last-known position passively from
+// requests that already carry lat/lng (RF09). Implementations must be
+// best-effort: errors are logged, never surfaced to the client.
+type LocationUpdater interface {
+	UpdateLastLocation(userID string, lat, lng float64, at time.Time) error
+}
 
 type ChannelHandler struct {
 	channelService *ChannelService
+	locations      LocationUpdater
 }
 
-func NewChannelHandler(channelService *ChannelService) *ChannelHandler {
+func NewChannelHandler(channelService *ChannelService, locations LocationUpdater) *ChannelHandler {
 	return &ChannelHandler{
 		channelService: channelService,
+		locations:      locations,
+	}
+}
+
+// recordLocation updates the user's last-known position without blocking or
+// failing the request. No-op when no updater is wired or userID is empty.
+func (h *ChannelHandler) recordLocation(userID string, lat, lng float64) {
+	if h.locations == nil || userID == "" {
+		return
+	}
+	if err := h.locations.UpdateLastLocation(userID, lat, lng, time.Now()); err != nil {
+		log.Printf("recordLocation user=%s: %v", userID, err)
 	}
 }
 
@@ -41,6 +63,7 @@ func (h *ChannelHandler) HandleCreateChannel(w http.ResponseWriter, r *http.Requ
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
 	}
+	h.recordLocation(userID, req.Latitude, req.Longitude)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -219,6 +242,8 @@ func (h *ChannelHandler) HandleGetNearbyChannels(w http.ResponseWriter, r *http.
 		http.Error(w, `{"error":"Invalid longitude"}`, http.StatusBadRequest)
 		return
 	}
+
+	h.recordLocation(r.Header.Get("X-User-ID"), lat, lng)
 
 	radiusKm := 10.0
 	if r := r.URL.Query().Get("radius"); r != "" {

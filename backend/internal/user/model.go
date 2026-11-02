@@ -13,8 +13,14 @@ type User struct {
 	Provider  string    `json:"provider" db:"provider"`
 	ProviderID string   `json:"provider_id" db:"provider_id"`
 	IsActive  bool      `json:"is_active" db:"is_active"`
-	CreatedAt time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+	IsAdmin   bool      `json:"is_admin" db:"is_admin"`
+	// Last-known position, set passively from channel API requests. Nil until
+	// the user's app first sends a location; never a history (RF09/DEC-018).
+	LastLat        *float64   `json:"last_lat" db:"last_lat"`
+	LastLng        *float64   `json:"last_lng" db:"last_lng"`
+	LastLocationAt *time.Time `json:"last_location_at" db:"last_location_at"`
+	CreatedAt      time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at" db:"updated_at"`
 }
 
 type CreateUserRequest struct {

@@ -6,7 +6,18 @@ Este documento registra o estado atual do projeto para facilitar a continuidade 
 
 ## Fase
 
-**Desenvolvimento - Protótipo Funcional + APK Android (27/10/2026 - RF06/RF08: buffer + fila de áudio)**
+**Desenvolvimento - Protótipo Funcional + APK Android (02/11/2026 - RF09: painel administrativo)**
+
+Em 02/11/2026 o painel administrativo (RF09, spec `specs/002-admin-panel/`)
+entrou em vigor: coluna `users.is_admin` (migração 003) com bootstrap idempotente
+via env `ADMIN_EMAILS`, middleware `RequireAdmin` (banco como fonte da verdade,
+JWT sem novas claims), APIs `GET /api/v1/admin/{stats,users}` +
+`PATCH|DELETE /api/v1/admin/users/{id}` e **SPA embutida** (`go:embed`) em
+`http://localhost:8080/admin` — dashboard com métricas (refresh 10s), gestão de
+usuários (suspender/reativar/promover/demover/excluir com guarda de self-action)
+e **última localização passiva** em `users.last_*` (migração 004, capturada dos
+payloads que o app já envia; link OpenStreetMap, sem histórico). Ver
+[CHANGELOG](CHANGELOG.md) de 02/11/2026, DEC-017 e DEC-018.
 
 Em 27/10/2026 o buffer de 30s (RF06/RNF04) e a fila de áudio (RF08) foram
 conectados ao fluxo real: o relay do WebSocket grava os chunks no
@@ -53,7 +64,7 @@ de e-mail duplicado no cadastro voltou a funcionar.
 
 ## Lacunas / Aderência aos Requisitos
 
-> **Fonte única de verdade** para o que ainda falta. Atualizado em 27/10/2026 (Fase 4).
+> **Fonte única de verdade** para o que ainda falta. Atualizado em 02/11/2026 (RF09).
 > As seções de requisitos/progresso deste documento são anteriores a esta auditoria.
 
 ### Lacunas dentro do escopo v1 (a corrigir)
@@ -71,6 +82,11 @@ de e-mail duplicado no cadastro voltou a funcionar.
   fila de recepção com teto de 30s e sentinel (`voice_screen.dart`). Resta
   validação E2E em campo com 2 clientes. `BufferManager` e
   `message_buffer_model.dart` seguem como código morto (decisão registrada).
+
+- **RF09 — Painel administrativo.** ~~Entrega parcial~~ **Implementado em 02/11/2026**:
+  APIs + SPA `/admin` + localização passiva. Pendências aceitas: token de suspenso
+  segue válido até expirar (24h; efeito no próximo login), validação em campo do
+  painel no navegador e escopo futuro (gestão de canais, kick, auditoria).
 
 - **Codec — divergência de documentação.** O pacote declara `Codec: "opus"`
   (`backend/internal/voice/websocket.go:44`), mas o áudio trafegado é **PCM16 cru** em base64, sem
@@ -133,6 +149,7 @@ Estes itens **não** serão implementados na v1 (persistência em PostgreSQL des
 - ✅ RF06 - Buffer de Conexão (Definido)
 - ✅ RF07 - Gestão de Perfil (Definido)
 - ✅ RF08 - Fila de Áudio (Definido)
+- ✅ RF09 - Painel Administrativo (adicionado em 02/11/2026, implementado)
 
 ### Requisitos Não Funcionais
 
@@ -190,8 +207,9 @@ Estes itens **não** serão implementados na v1 (persistência em PostgreSQL des
 - ✅ Módulo Channel (handler, service, stores)
 - ✅ Módulo Auth (service; JWT)
 - ✅ Módulo User (handler, service, stores)
+- ✅ Módulo Admin (RF09: handler, RequireAdmin, SPA `/admin`, migrações 003/004)
 - ✅ Persistência PostgreSQL (stores PG em user/channel, migrações em `internal/db`)
-- ✅ Testes unitários (9 arquivos `_test.go`)
+- ✅ Testes unitários (10 arquivos `_test.go`, incl. `admin/handler_test.go`)
 - ✅ Testes de integração (opt-in `RADIOPX_TEST_DB=1`)
 
 ### Frontend
@@ -214,6 +232,41 @@ Estes itens **não** serão implementados na v1 (persistência em PostgreSQL des
 ---
 
 ## Última Alteração
+
+**02/11/2026 - RF09: painel administrativo com métricas, gestão de usuários e localização**
+
+**Data**: 02/11/2026
+
+**Descrição**:
+- **Identidade**: migração `003_admin_users.sql` (`users.is_admin`); service com
+  `ErrUserInactive`, `ErrAdminSelfAction`, `SetUserActive`, `SetUserAdmin`,
+  `BootstrapAdmins`; `Authenticate` rejeita `!IsActive`; boot promove
+  `ADMIN_EMAILS` (csv, idempotente) em `main.go`; `.env.example` atualizado
+- **Localização passiva**: migração `004_user_last_location.sql`
+  (`last_lat`/`last_lng`/`last_location_at`, nullable); `UpdateLastLocation`
+  best-effort nos handlers de `nearby`/`create` via interface `LocationUpdater`
+- **APIs admin**: `middleware.RequireAdmin`; getters `hub.GetLiveRoomCount` e
+  `VoiceService.ActiveChannelsCount`; pacote `internal/admin` com
+  `GET /stats`, `GET /users`, `PATCH|DELETE /users/{id}` (cadeia injector →
+  Auth → RequireAdmin; self-action 403; lista sem `password_hash`)
+- **SPA**: `internal/admin/web/` (`index.html`/`style.css`/`app.js`) embutida
+  com `go:embed` (`spa.go`) e servida em `/admin` e `/admin/*` (fallback SPA);
+  login em memória, dashboard refresh 10s, tabela com badges + coluna
+  localização (link OSM), ações com `confirm`, tratamento 401/403/429
+- **Testes**: `admin/handler_test.go` (11), `user/service_test.go` (+6);
+  suíte backend verde; `flutter test` **57/57**; `test-backend.ps1` **28/28**
+
+**Verificação**: `go build` + `go vet` + `go test ./... -count=1` verdes;
+`flutter test` 57/57; `flutter analyze` 14 issues (baseline); `test-backend.ps1`
+28/28; E2E manual: `/admin` 200, assets 200, API 401 sem token, self-patch 403,
+login+stats+localização no payload. Detalhes em `CHANGELOG.md`.
+
+**Docs**: RF09 + rastreabilidade em `requisitos.md`; DEC-017/018 em
+`decisoes.md`; migrações 003/004 em `banco-de-dados.md`; módulo Admin +
+endpoints em `arquitetura.md`; seção "Painel Administrativo" no `README.md`;
+endpoints admin em `AGENTS.md`.
+
+---
 
 **27/10/2026 - RF06/RF08: buffer de 30s com replay e fila de áudio**
 
@@ -595,19 +648,18 @@ frontend intocado. Detalhes em `CHANGELOG.md`.
 
 ## Próxima Tarefa
 
-**Plano aprovado — Fases 0, 1, 2, 3 e 4 concluídas + RF06/RF08 (buffer/replay e fila de áudio)**
+**Plano aprovado — Fases 0–4 concluídas + RF06/RF08 (buffer/replay) + RF09 (admin)**
 
 ### Próximas Fases
 
 1. ~~**Fase 2 — Expor o backend via ngrok**~~ — **Concluída em 27/10/2026**
-   (túnel + CORS + script; ver CHANGELOG da data. URL por sessão no plano free)
-2. ~~**Fase 3 — Tela para colar a URL do servidor no app**~~ — **Concluída em
-   27/10/2026** (RNF06 adicionado; `AppConfig` em runtime + sheet Login/Perfil)
-3. ~~**Fase 4 — Documentação**~~ — **Concluída em 27/10/2026** (`banco-de-dados.md`
-   pós-002, DEC-012..015, `arquitetura.md` corrigido, `README.md` reescrito,
-   `.env.example` limpo)
+2. ~~**Fase 3 — Tela para colar a URL do servidor no app**~~ — **Concluída em 27/10/2026**
+3. ~~**Fase 4 — Documentação**~~ — **Concluída em 27/10/2026**
 4. ~~**RF06/RF08 — Buffer 30s + replay + fila**~~ — **Concluída em 27/10/2026**
-   (ver CHANGELOG da data; validação E2E em campo pendente)
+   (validação E2E em campo pendente)
+5. ~~**RF09 — Painel administrativo**~~ — **Concluída em 02/11/2026**
+   (`specs/002-admin-panel/`: is_admin + localização passiva + APIs + SPA;
+   validação em campo do painel pendente; commit Fase 6 pendente)
 
 ---
 
@@ -711,9 +763,9 @@ frontend intocado. Detalhes em `CHANGELOG.md`.
 
 ## Última Atualização
 
-**Data**: 27/10/2026
+**Data**: 02/11/2026
 
-**Hora**: 2026-10-27
+**Hora**: 2026-11-02
 
 **Por**: OpenCode (assistente AI)
 

@@ -93,7 +93,15 @@ backend/
 │   │   ├── migrate.go                  # Runner de migrações (go:embed)
 │   │   └── migrations/
 │   │       ├── 001_initial.sql
-│   │       └── 002_align_models.sql
+│   │       ├── 002_align_models.sql
+│   │       ├── 003_admin_users.sql     # users.is_admin (RF09)
+│   │       └── 004_user_last_location.sql  # última posição (RF09)
+│   │
+│   ├── admin/
+│   │   ├── handler.go                  # API admin (stats/users/patch/delete)
+│   │   ├── handler_test.go             # 401/403/CRUD/self-guard
+│   │   ├── spa.go                      # go:embed web/ + fallback SPA
+│   │   └── web/                        # index.html, style.css, app.js
 │   │
 │   ├── voice/
 │   │   ├── handler.go
@@ -139,6 +147,13 @@ backend/
 - **Responsabilidade**: Gestão de usuários
 - **Dependências**: Nenhuma
 - **Endpoints**: `/api/v1/user/profile`, `/api/v1/user/change-password`
+
+#### Admin Module (RF09)
+- **Responsabilidade**: Painel administrativo — métricas + gestão de usuários
+- **Dependências**: User, Channel, Voice, Hub (deps injetadas); `RequireAdmin`
+- **Endpoints**: `/api/v1/admin/{stats,users}` (GET/PATCH/DELETE) + SPA em `/admin`
+- **Identidade**: `users.is_admin` + bootstrap `ADMIN_EMAILS` (DEC-017);
+  última localização passiva em `users.last_*` (DEC-018)
 
 #### Channel Module
 - **Responsabilidade**: Alocação e gestão de canais
@@ -297,10 +312,16 @@ lib/
 - `GET /api/v1/channels` - Listar canais
 - `POST /api/v1/channels/join` - Entrar no canal
 - `POST /api/v1/channels/leave` - Sair do canal
+- `GET /api/v1/admin/stats` - Métricas (requer `is_admin`, RF09)
+- `GET /api/v1/admin/users` - Lista de usuários (sem `password_hash`)
+- `PATCH /api/v1/admin/users/{id}` - Suspender/reativar/promover/demover
+- `DELETE /api/v1/admin/users/{id}` - Excluir usuário
+- `GET /admin` - Painel web SPA embutida (sem auth; APIs protegidas)
 
 > Localização não tem endpoint próprio: o app envia as coordenadas do GPS nos
 > payloads da API de canais (criar/listar próximos). O backend calcula a
-> distância com `internal/location.CalculateDistance`.
+> distância com `internal/location.CalculateDistance` e grava a **última**
+> posição de forma passiva em `users.last_*` (RF09/DEC-018).
 
 ### WebSocket (Tempo Real)
 

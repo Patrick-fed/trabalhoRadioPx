@@ -4,6 +4,113 @@ Este documento registra todas as alterações significativas do projeto.
 
 ---
 
+## 02/11/2026 - RF09: painel administrativo com métricas, gestão de usuários e localização
+
+### Contexto
+
+Plano `specs/002-admin-panel/` (aprovado em 27/10/2026): entregar o painel
+admin completo com localização **passiva** (capturar o lat/lng que o app já
+envia, sem mudar o Flutter), lista de usuários + link OpenStreetMap (sem mapa
+embutido) e as 6 fases do plano (is_admin → localização → APIs → SPA →
+verificação → documentação).
+
+### Backend
+
+**Migrações**
+
+- `003_admin_users.sql`: `users.is_admin BOOLEAN NOT NULL DEFAULT FALSE` + índice parcial
+- `004_user_last_location.sql`: `users.last_lat`, `last_lng`, `last_location_at`
+  (nullable — última posição, **sem histórico**, DEC-018)
+
+**`internal/user/`**
+
+- `model.go`: `IsAdmin` + ponteiros `LastLat`/`LastLng`/`LastLocationAt`
+- `repository.go`: `is_admin`/`last_*` em `userColumns`, Create, Update, Scans;
+  `UpdateLastLocation(userID, lat, lng)`
+- `service.go`: `ErrUserInactive`, `ErrAdminSelfAction`; `Authenticate` rejeita
+  `!IsActive` (suspensão vale no próximo login → 401 genérico); `SetUserActive`,
+  `SetUserAdmin` (guarda self-action), `BootstrapAdmins` (csv idempotente),
+  `UpdateLastLocation` (best-effort)
+
+**`internal/middleware/auth.go`**
+
+- `RequireAdmin(isAdmin func(string) bool)`: 401 sem token, 403 se não-admin
+  (banco como fonte da verdade — promoção vale sem novo token, DEC-017)
+
+**`internal/admin/`** (novo)
+
+- `handler.go`: `GET /api/v1/admin/stats` (users/channels/ws/rooms/transmitindo),
+  `GET /users` (sem `password_hash`), `PATCH /users/{id}` (`is_active`/`is_admin`),
+  `DELETE /users/{id}`; dispatch por path; erros PT-BR
+- `spa.go`: `//go:embed web/*` + `SPAHandler` (`/admin`, `/admin/*`, fallback index)
+- `handler_test.go`: 11 casos (401/403/200/stats/patch/delete/self-guard)
+
+**`internal/channel/handler.go`**
+
+- Interface `LocationUpdater` + `recordLocation` best-effort em
+  `nearby` e `create` (reaproveita lat/lng já enviados — DEC-018)
+
+**`pkg/websocket/hub.go`**, **`internal/voice/service.go`**
+
+- `GetLiveRoomCount()`, `ActiveChannelsCount()` para o dashboard
+
+**`cmd/server/main.go`**
+
+- Bootstrap `ADMIN_EMAILS` (csv, idempotente, log por email)
+- Rotas: cadeia injector → Auth → RequireAdmin em `/api/v1/admin/`;
+  `/admin` e `/admin/` servem a SPA (sem auth; API continua protegida)
+
+**`backend/.env.example`**: `ADMIN_EMAILS=`
+
+### Frontend
+
+- Intocado (57/57 verdes) — o painel é SPA vanilla no backend
+
+### SPA (`internal/admin/web/`)
+
+- `index.html` + `style.css` + `app.js` (vanilla, sem build)
+- Login (`POST /auth/login`, token **só em memória**), Dashboard (cards +
+  refresh 10s), Usuários (busca, badges admin/inativo, **coluna Localização
+  com link OSM** ou "—"), ações Suspender/Reativar/Promover/Demover/Excluir
+  com `confirm`; trata 401/403/429 e self-action escondido
+
+### Testes
+
+- Backend: `go build` + `go vet` + `go test ./... -count=1` → todos verdes
+  (11 novos em `admin`, 6 novos em `user`)
+- Frontend: `flutter test` **57/57**; `flutter analyze` 14 issues (baseline)
+- E2E: `/admin` 200 (index/css/js/fallback), API 401 sem token, 403 não-admin,
+  self-patch 403, login+stats+lista com `last_lat`/`last_lng` no payload
+- `scripts/test-backend.ps1` → **28/28** (regressão, intocado)
+
+### Verificação
+
+- Migrações 003/004 aplicadas no DB real (`schema_migrations`); localização
+  gravada e sobrescrita confirmada via psql
+- RNF01 intacto: nenhum áudio persistido; localização = só última posição
+
+### Docs
+
+- `docs/requisitos.md`: **RF09** + rastreabilidade + nota de status
+- `docs/decisoes.md`: **DEC-017** (SPA embutida + is_admin + RequireAdmin),
+  **DEC-018** (localização passiva, sem histórico, link OSM)
+- `docs/banco-de-dados.md`: DDLs das migrações 003/004
+- `docs/arquitetura.md`: módulo Admin, árvore (`internal/admin`, migrations),
+  endpoints REST/admin
+- `README.md`: seção "Painel Administrativo" + `ADMIN_EMAILS` no env
+- `AGENTS.md`: seção "Admin (RF09)" em Regras de API
+- `PROJECT_STATE.md`, `specs/002-admin-panel/plan.md` (fases concluídas)
+
+### Pendências / observações
+
+- Token de usuário suspenso segue válido até expirar (24h) — efeito garantido
+  no próximo login; revogação ativa fica para futuro
+- Validação em campo do painel no navegador (localhost e via LAN)
+- Fase F do plano: commit `feat(admin): ...` + push (pendente de aprovação)
+- Escopo fora da v1: gestão de canais, kick, auditoria, roles/Casbin
+
+---
+
 ## 27/10/2026 - RF06/RF08: buffer de 30s com replay e fila de áudio
 
 ### Contexto

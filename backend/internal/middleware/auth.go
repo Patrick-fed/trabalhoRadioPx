@@ -57,3 +57,24 @@ func GetUserIDFromContext(ctx context.Context) string {
 	}
 	return ""
 }
+
+// RequireAdmin gates a handler on the admin flag. It runs after AuthMiddleware
+// and the X-User-ID injector: 401 when no user is attached, 403 when the
+// callback reports the user is not an admin. The callback hits the database on
+// every request (source of truth), so promotion applies without a new token.
+func RequireAdmin(isAdmin func(userID string) bool) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			userID := r.Header.Get("X-User-ID")
+			if userID == "" {
+				http.Error(w, `{"error":"Authorization header required"}`, http.StatusUnauthorized)
+				return
+			}
+			if !isAdmin(userID) {
+				http.Error(w, `{"error":"Acesso negado: apenas administradores"}`, http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}

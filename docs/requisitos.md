@@ -4,14 +4,15 @@
 
 Este documento lista todos os requisitos funcionais e não funcionais do sistema RadioPX.
 
-> **Status de implementação (27/10/2026)**: este documento define **o que** o sistema deve fazer.
+> **Status de implementação (02/11/2026)**: este documento define **o que** o sistema deve fazer.
 > Nem todos os RF/RNF abaixo estão totalmente implementados na v1.
 > O mapeamento de lacunas e de escopo fica em `PROJECT_STATE.md` →
 > *Lacunas / Aderência aos Requisitos*. Em especial: RF02 (OAuth é trabalho futuro),
 > RNF05 (Casbin fora do escopo v1; TLS via túnel ngrok) e RNF02/RNF03 (sem testes de carga).
 > Já resolvidos: RF03 (um falante por vez, `voiceGuard`), RF06 (buffer/replay via
 > `request_replay`, 27/10), RF08 (fila com teto de 30s, 27/10), persistência
-> PostgreSQL (Fase 1) e RNF06 (URL do servidor editável, Fase 3).
+> PostgreSQL (Fase 1), RNF06 (URL do servidor editável, Fase 3) e RF09
+> (painel admin com métricas, gestão de usuários e localização, 02/11).
 
 ## Requisitos Funcionais
 
@@ -137,6 +138,33 @@ O sistema deve ordenar áudios:
 entre o WebSocket e o player; fim de segmento entra como sentinel na própria
 fila. "Fila de prioridade" é atendida por ordem de chegada (FIFO) — prioridade
 por timestamp ficou fora de escopo.
+
+---
+
+### RF09 - Painel Administrativo
+
+O sistema deve oferecer um painel web de administração com:
+- Dashboard de métricas do sistema
+- Gestão de usuários (listar, suspender, reativar, promover/demover admin, excluir)
+- Visualização da última localização conhecida de cada usuário
+
+**Critérios de Aceitação:**
+- Painel acessível em `/admin` no mesmo host do backend (SPA embutida)
+- Acesso restrito a usuários com `is_admin=true` (bootstrap via `ADMIN_EMAILS`)
+- Dashboard mostra: total de usuários, ativos, canais, conexões WebSocket,
+  salas ativas e canais transmitindo (refresh a cada 10s)
+- Lista de usuários **nunca** expõe `password_hash`
+- Suspensão invalida o login (`Authenticate` rejeita `!IsActive`)
+- Admin não pode suspender, demover nem excluir **a si mesmo**
+- Cada usuário exibe a última posição (`last_lat`/`last_lng`/`last_location_at`)
+  com link para OpenStreetMap, ou "—" se nunca enviou
+- Localização capturada de forma **passiva** (requests que já enviam lat/lng:
+  `/channels/nearby` e `POST /channels`), sem histórico — só a última posição
+
+**Implementação (02/11/2026):** pacote `internal/admin` (API
+`/api/v1/admin/{stats,users}`), middleware `RequireAdmin`, migrações
+`003_admin_users` + `004_user_last_location`, SPA em `internal/admin/web/`
+(`go:embed`). Ver DEC-017 e DEC-018.
 
 ---
 
@@ -286,3 +314,11 @@ por timestamp ficou fora de escopo.
 - **Database**: N/A (memória apenas)
 - **Frontend**: `features/voice/`
 - **Testes**: unit, integration
+
+### RF09 → Backend → Database → Frontend → Testes
+
+- **Backend**: `internal/admin/` + `middleware.RequireAdmin` + bootstrap `ADMIN_EMAILS`
+- **Database**: `users.is_admin`, `users.last_lat/last_lng/last_location_at` (migrações 003/004)
+- **Frontend**: SPA `internal/admin/web/` (servida em `/admin`; sem tela no app mobile)
+- **Testes**: `internal/admin/handler_test.go` (11 casos), `user/service_test.go`
+  (suspend/promote/bootstrap/location), E2E manual + `test-backend.ps1` (regressão)
