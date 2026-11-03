@@ -7,6 +7,10 @@
   let me = null;
   let statsTimer = null;
   let usersCache = [];
+  let prevStats = null; // for delta badges (in-memory only)
+  let map = null;
+  let mapLayer = null;
+  let mapMarkerCount = -1; // to re-fit bounds only when count changes
 
   const $ = (sel) => document.querySelector(sel);
 
@@ -84,6 +88,8 @@
     token = null;
     me = null;
     stopStats();
+    prevStats = null;
+    mapMarkerCount = -1;
     $("#app-view").hidden = true;
     $("#login-view").hidden = false;
     $("#password").value = "";
@@ -92,27 +98,146 @@
   // ---------- dashboard ----------
 
   function startStats() {
-    refreshStats();
+    refreshDashboard();
     stopStats();
-    statsTimer = setInterval(refreshStats, 10000);
+    statsTimer = setInterval(refreshDashboard, 10000);
   }
 
   function stopStats() {
     if (statsTimer) { clearInterval(statsTimer); statsTimer = null; }
   }
 
-  async function refreshStats() {
+  function setDelta(id, current, prev) {
+    const el = $(id);
+    if (!el) return;
+    if (prev == null || current === prev) {
+      el.hidden = true;
+      return;
+    }
+    const d = current - prev;
+    el.textContent = (d > 0 ? "+" : "−") + Math.abs(d);
+    el.className = "delta " + (d > 0 ? "up" : "down");
+    el.hidden = false;
+  }
+
+  function setSub(id, text) {
+    const el = $(id);
+    if (el) el.textContent = text || "";
+  }
+
+  async function refreshDashboard() {
     try {
-      const s = await api("/api/v1/admin/stats");
+      const [s, list] = await Promise.all([
+        api("/api/v1/admin/stats"),
+        api("/api/v1/admin/users"),
+      ]);
+      usersCache = list;
+
+      const withLoc = list.filter(function (u) {
+        return u.last_lat != null && u.last_lng != null;
+      }).length;
+
       $("#stat-users").textContent = s.users_total;
       $("#stat-active").textContent = s.users_active;
       $("#stat-channels").textContent = s.channels_total;
       $("#stat-ws").textContent = s.ws_connections;
       $("#stat-rooms").textContent = s.live_rooms;
       $("#stat-tx").textContent = s.transmitting_channels;
+      $("#stat-loc").textContent = withLoc;
+
+      const suspended = s.users_total - s.users_active;
+      setSub("#stat-users-sub", suspended > 0 ? suspended + " suspenso" + (suspended > 1 ? "s" : "") : "todos ativos");
+      setSub("#stat-active-sub", s.users_total > 0 ? Math.round((s.users_active / s.users_total) * 100) + "% do total" : "sem usuários");
+      setSub("#stat-channels-sub", s.channels_total > 0 ? "canais criados" : "nenhum canal");
+      setSub("#stat-ws-sub", s.ws_connections > 0 ? "clientes conectados" : "nenhuma conexão");
+      setSub("#stat-rooms-sub", s.live_rooms > 0 ? "salas com membros" : "nenhuma sala");
+      setSub("#stat-tx-sub", s.transmitting_channels > 0 ? "canais no ar" : "silêncio no ar");
+      setSub("#stat-loc-sub", "com posição conhecida");
+
+      if (prevStats) {
+        setDelta("#stat-users-delta", s.users_total, prevStats.users_total);
+        setDelta("#stat-active-delta", s.users_active, prevStats.users_active);
+        setDelta("#stat-channels-delta", s.channels_total, prevStats.channels_total);
+        setDelta("#stat-loc-delta", withLoc, prevStats.withLoc);
+      }
+      prevStats = {
+        users_total: s.users_total,
+        users_active: s.users_active,
+        channels_total: s.channels_total,
+        withLoc: withLoc,
+      };
+
+      renderMap(list);
     } catch (e) {
-      if (e.status !== 401) console.warn("stats:", e.message);
+      if (e.status !== 401) console.warn("dashboard:", e.message);
     }
+  }
+
+  // ---------- map ----------
+
+  function initMap() {
+    if (map || typeof L === "undefined") return;
+    map = L.map("map", { scrollWheelZoom: true }).setView([-23.5505, -46.6333], 4);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    }).addTo(map);
+    mapLayer = L.layerGroup().addTo(map);
+    // Leaflet serves relative icon URLs from the CSS; with <base href="/admin/">
+    // they resolve correctly, but pin them explicitly to the vendored path.
+    L.Icon.Default.mergeOptions({
+      iconUrl: "vendor/leaflet/images/marker-icon.png",
+      iconRetinaUrl: "vendor/leaflet/images/marker-icon-2x.png",
+      shadowUrl: "vendor/leaflet/images/marker-shadow.png",
+    });
+  }
+
+  function popupHTML(u) {
+    const name = escapeHTML(u.name || "—");
+    const email = escapeHTML(u.email || "—");
+    const when = escapeHTML(fmtWhen(u.last_location_at));
+    const status = u.is_active
+      ? '<span class="badge badge-ok">ativo</span>'
+      : '<span class="badge badge-off">suspenso</span>';
+    const lat = Number(u.last_lat).toFixed(5);
+    const lng = Number(u.last_lng).toFixed(5);
+    const osm = "https://www.openstreetmap.org/?mlat=" + lat + "&mlon=" + lng + "#map=15/" + lat + "/" + lng;
+    return (
+      "<b>" + name + "</b>" +
+      email + "<br>" +
+      status + " · " + when + "<br>" +
+      '<a href="' + osm + '" target="_blank" rel="noopener">abrir no OpenStreetMap</a>'
+    );
+  }
+
+  function renderMap(list) {
+    if (typeof L === "undefined") return;
+    initMap();
+
+    const located = list.filter(function (u) {
+      return u.last_lat != null && u.last_lng != null;
+    });
+
+    $("#map-empty").hidden = located.length > 0;
+
+    mapLayer.clearLayers();
+    const bounds = [];
+    located.forEach(function (u) {
+      const cls = u.is_active ? "map-marker-active" : "map-marker-inactive";
+      const icon = L.divIcon({ className: cls, iconSize: [26, 26], iconAnchor: [13, 26], popupAnchor: [0, -24] });
+      const m = L.marker([u.last_lat, u.last_lng], { icon: icon }).bindPopup(popupHTML(u));
+      mapLayer.addLayer(m);
+      bounds.push([u.last_lat, u.last_lng]);
+    });
+
+    // Re-fit only on first paint or when the number of markers changes —
+    // otherwise the 10s refresh would steal pan/zoom from the admin.
+    if (bounds.length && bounds.length !== mapMarkerCount) {
+      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 13 });
+    }
+    mapMarkerCount = bounds.length;
+    // Leaflet needs a kick when the container was hidden (tab switch).
+    setTimeout(function () { map.invalidateSize(); }, 100);
   }
 
   // ---------- users ----------
@@ -253,7 +378,7 @@
         toast("Usuário excluído");
       }
       await refreshUsers();
-      refreshStats();
+      refreshDashboard();
     } catch (e) {
       toast(e.message, "err");
     }
@@ -268,7 +393,7 @@
     $("#dashboard-tab").hidden = name !== "dashboard";
     $("#users-tab").hidden = name !== "users";
     if (name === "users") refreshUsers();
-    if (name === "dashboard") refreshStats();
+    if (name === "dashboard") refreshDashboard();
   }
 
   // ---------- wiring ----------

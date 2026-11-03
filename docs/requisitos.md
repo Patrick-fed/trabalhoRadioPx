@@ -152,7 +152,12 @@ O sistema deve oferecer um painel web de administração com:
 - Painel acessível em `/admin` no mesmo host do backend (SPA embutida)
 - Acesso restrito a usuários com `is_admin=true` (bootstrap via `ADMIN_EMAILS`)
 - Dashboard mostra: total de usuários, ativos, canais, conexões WebSocket,
-  salas ativas e canais transmitindo (refresh a cada 10s)
+  salas ativas e canais transmitindo (refresh a cada 10s), com subtexto de
+  detalhe e badge de variação desde a leitura anterior
+- Dashboard exibe **mapa** (Leaflet + tiles OSM) com um marcador por usuário
+  que tenha posição conhecida; popup com nome, data, status e link OSM;
+  suspenso = marcador âmbar; sem posição = sem marcador
+- Card "Localização" mostra quantos usuários têm posição conhecida
 - Lista de usuários **nunca** expõe `password_hash`
 - Suspensão invalida o login (`Authenticate` rejeita `!IsActive`)
 - Admin não pode suspender, demover nem excluir **a si mesmo**

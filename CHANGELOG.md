@@ -4,6 +4,74 @@ Este documento registra todas as alterações significativas do projeto.
 
 ---
 
+## 02/11/2026 - RF09 v2: cards com detalhes/variação e mapa Leaflet da última posição
+
+### Contexto
+
+Feedback em campo do painel: "os cards não fazem nada" e pedido de "card ou
+mapa com a posição dos usuários". Os cards viram números secos e a DEC-018
+havia deixado de fora o mapa embutido.
+
+### Alterações (apenas SPA — backend intocado)
+
+**Vendor**
+
+- `internal/admin/web/vendor/leaflet/` — Leaflet **1.9.4** (`leaflet.js`
+  147KB, `leaflet.css` 15KB, ícones de marcador/layers) baixado de unpkg e
+  versionado; `go:embed web/*` já o cobre. Sem CDN em runtime (só os tiles
+  OSM são remotos)
+
+**`index.html`**
+
+- CSS/JS do Leaflet antes de `app.js`
+- Sub-linhas nos 6 cards (`#stat-*-sub`) + badges de variação
+  (`#stat-*-delta`) + card novo **Localização** (`#stat-loc`, "com posição
+  conhecida")
+- Seção "Última posição dos usuários": `#map-wrap` com `#map` (420px) e
+  empty-state `#map-empty`
+
+**`style.css`**
+
+- `.card-sub`, `.delta.up/.down`, `.card-loc`, `.section-title`
+- `#map`/`#map-wrap`/`#map-empty` (posição absoluta sobre o mapa)
+- Popup Leaflet escuro (coerente com o tema); marcadores `divIcon`
+  `.map-marker-active` (azul) e `.map-marker-inactive` (âmbar)
+- Mobile: mapa 280px
+
+**`app.js`**
+
+- `refreshStats` → **`refreshDashboard`**: busca `stats` + `users` em
+  paralelo a cada 10s; renderiza valores, subtextos ("12 suspenos",
+  "92% do total", "2 com posição conhecida"…) e **badges de variação**
+  (`+N`/`−N`) comparando com a leição anterior (estado só em memória;
+  logout zera)
+- **Mapa**: `initMap()` (Leaflet + tiles OSM + ícones do vendor),
+  `renderMap(users)` com marcadores só de quem tem lat/lng; popup com
+  nome/e-mail/data/status/link OSM (HTML via `escapeHTML`); suspenso =
+  âmbar; `fitBounds` apenas no 1º load ou quando o nº de marcadores muda
+  (refresh não rouba o pan); `invalidateSize` ao voltar pra aba;
+  empty-state quando ninguém tem posição
+
+### Verificação
+
+- `node --check app.js` OK; `go build`/`vet`/`test ./...` verdes (backend
+  intocado); E2E no navegador: cards com subtexto, delta ao promover/
+  suspender, mapa com marcadores e popup, panning estável no refresh
+
+### Docs
+
+- **DEC-019** (mapa Leaflet vendorado; supera "sem mapa embutido" da
+  DEC-018, com nota nela); RF09 com novos critérios; `PROJECT_STATE.md`;
+  status do `specs/002-admin-panel/plan.md`
+
+### Pendências / observações
+
+- Tiles OSM públicos têm rate limit adequado para demo; produção usaria
+  proxy/tiles próprios
+- Sem histórico/trilha (DEC-018 mantida); sem clustering (2 usuários hoje)
+
+---
+
 ## 02/11/2026 - RF09: painel administrativo com métricas, gestão de usuários e localização
 
 ### Contexto

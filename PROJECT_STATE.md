@@ -6,7 +6,15 @@ Este documento registra o estado atual do projeto para facilitar a continuidade 
 
 ## Fase
 
-**Desenvolvimento - Protótipo Funcional + APK Android (02/11/2026 - RF09: painel administrativo)**
+**Desenvolvimento - Protótipo Funcional + APK Android (02/11/2026 - RF09 v2: mapa Leaflet + cards de detalhe)**
+
+Em 02/11/2026 o dashboard do painel admin ganhou **mapa embutido (Leaflet
+1.9.4 vendorado)** com a última posição de cada usuário (popup com
+nome/data/status/link OSM; suspenso em âmbar) e os cards passaram a mostrar
+**subtexto** ("92% do total", "2 com posição conhecida") + **badge de
+variação** desde a leitura anterior. Backend intocado — dados vêm de
+`GET /api/v1/admin/users`. Ver [CHANGELOG](CHANGELOG.md) de 02/11/2026 e
+**DEC-019**.
 
 Em 02/11/2026 o painel administrativo (RF09, spec `specs/002-admin-panel/`)
 entrou em vigor: coluna `users.is_admin` (migração 003) com bootstrap idempotente
@@ -232,6 +240,30 @@ Estes itens **não** serão implementados na v1 (persistência em PostgreSQL des
 ---
 
 ## Última Alteração
+
+**02/11/2026 - RF09 v2: cards com detalhes/variação e mapa Leaflet da última posição**
+
+**Data**: 02/11/2026
+
+**Descrição**:
+- **Vendor**: `internal/admin/web/vendor/leaflet/` (Leaflet 1.9.4 js/css/
+  ícones) — sem CDN; `go:embed` cobre
+- **Cards**: sublinhas de detalhe + badges de variação (`+N`/`−N`, estado em
+  memória) + card **Localização** ("N com posição conhecida")
+- **Mapa no dashboard**: `initMap`/`renderMap` — marcador por usuário com
+  `last_lat`/`last_lng`, popup (nome/e-mail/data/status/link OSM, HTML
+  escapado), suspenso âmbar, `fitBounds` só quando o nº de marcadores muda,
+  empty-state; tiles OSM públicos
+- **Backend intocado** (users API já expõe `last_*`); suíte `go test` verdes;
+  `node --check` OK
+
+**Verificação**: E2E no navegador (`/admin`): cards com subtexto/delta,
+mapa com marcadores, pan estável no refresh de 10s. Detalhes em `CHANGELOG.md`.
+
+**Docs**: **DEC-019** + nota na DEC-018; RF09 com critérios de mapa; esta
+entrada; status do `specs/002-admin-panel/plan.md`.
+
+---
 
 **02/11/2026 - RF09: painel administrativo com métricas, gestão de usuários e localização**
 

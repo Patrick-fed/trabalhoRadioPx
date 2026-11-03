@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <base href="/admin/">
   <title>RadioPX — Admin</title>
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -45,14 +46,54 @@
       <!-- Dashboard -->
       <section id="dashboard-tab" class="tab">
         <div class="cards" id="stats-cards">
-          <div class="card"><span class="card-label">Usuários</span><span class="card-value" id="stat-users">—</span></div>
-          <div class="card"><span class="card-label">Ativos</span><span class="card-value" id="stat-active">—</span></div>
-          <div class="card"><span class="card-label">Canais</span><span class="card-value" id="stat-channels">—</span></div>
-          <div class="card"><span class="card-label">Conexões WS</span><span class="card-value" id="stat-ws">—</span></div>
-          <div class="card"><span class="card-label">Salas ativas</span><span class="card-value" id="stat-rooms">—</span></div>
-          <div class="card"><span class="card-label">Transmitindo</span><span class="card-value" id="stat-tx">—</span></div>
+          <div class="card">
+            <span class="card-label">Usuários</span>
+            <span class="card-value" id="stat-users">—</span>
+            <span class="card-sub" id="stat-users-sub"></span>
+            <span class="delta" id="stat-users-delta" hidden></span>
+          </div>
+          <div class="card">
+            <span class="card-label">Ativos</span>
+            <span class="card-value" id="stat-active">—</span>
+            <span class="card-sub" id="stat-active-sub"></span>
+            <span class="delta" id="stat-active-delta" hidden></span>
+          </div>
+          <div class="card">
+            <span class="card-label">Canais</span>
+            <span class="card-value" id="stat-channels">—</span>
+            <span class="card-sub" id="stat-channels-sub"></span>
+            <span class="delta" id="stat-channels-delta" hidden></span>
+          </div>
+          <div class="card">
+            <span class="card-label">Conexões WS</span>
+            <span class="card-value" id="stat-ws">—</span>
+            <span class="card-sub" id="stat-ws-sub"></span>
+          </div>
+          <div class="card">
+            <span class="card-label">Salas ativas</span>
+            <span class="card-value" id="stat-rooms">—</span>
+            <span class="card-sub" id="stat-rooms-sub"></span>
+          </div>
+          <div class="card">
+            <span class="card-label">Transmitindo</span>
+            <span class="card-value" id="stat-tx">—</span>
+            <span class="card-sub" id="stat-tx-sub"></span>
+          </div>
+          <div class="card card-loc">
+            <span class="card-label">Localização</span>
+            <span class="card-value" id="stat-loc">—</span>
+            <span class="card-sub" id="stat-loc-sub">com posição conhecida</span>
+            <span class="delta" id="stat-loc-delta" hidden></span>
+          </div>
         </div>
-        <p class="hint">Atualização automática a cada 10s.</p>
+        <p class="hint">Atualização automática a cada 10s. Variação desde a leitura anterior.</p>
+
+        <h2 class="section-title">Última posição dos usuários</h2>
+        <div id="map-wrap">
+          <div id="map"></div>
+          <p id="map-empty" hidden>Nenhum usuário com posição conhecida ainda.</p>
+        </div>
+        <p class="hint">Marcadores da última posição conhecida (sem histórico). Âmbar = usuário suspenso. Dados: OpenStreetMap.</p>
       </section>
 
       <!-- Usuários -->
@@ -85,6 +126,7 @@
     <div id="toast" class="toast" hidden></div>
   </div>
 
+  <script src="vendor/leaflet/leaflet.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

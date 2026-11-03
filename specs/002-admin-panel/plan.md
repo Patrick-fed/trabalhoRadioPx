@@ -2,7 +2,7 @@
 
 **Branch**: `feature-login` | **Date**: 27/10/2026 | **Spec**: `docs/requisitos.md` → RF09
 **Input**: Decisões aprovadas em 27/10/2026 (SPA embed, métricas + gestão de usuários, `is_admin` + `ADMIN_EMAILS`)
-**Status (02/11/2026)**: Fases A–F concluídas — commit `8d4af6b` em `feature-login`, `dev` e `main` (sync FF)
+**Status (02/11/2026)**: Fases A–F concluídas (commit `8d4af6b`) + correção de assets (`dea7442`) + **RF09 v2** — cards com detalhes/variação e mapa Leaflet vendorado (DEC-019)
 
 ## Summary
 

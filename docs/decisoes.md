@@ -505,3 +505,44 @@ próprio de localização.
   nearby/create; coluna "Localização" na SPA com link OSM.
 - Última posição fica obsoleta se o usuário parar de usar o app — exibição
   com data/hora para o admin avaliar a frescor.
+- **Atualização (02/11/2026)**: a parte "sem mapa embutido" foi superada pela
+  **DEC-019** (mapa Leaflet no dashboard); link OSM na tabela permanece.
+
+## DEC-019 — Mapa Leaflet vendorado no dashboard (RF09)
+
+**Data**: 02/11/2026
+
+**Decisão**: o dashboard do painel admin ganha um **mapa embutido com
+Leaflet 1.9.4 vendorado** em `internal/admin/web/vendor/leaflet/` (js, css e
+ícones; `go:embed` já cobre `web/*`), exibindo um marcador por usuário com
+`last_lat`/`last_lng` conhecidos. Popup com nome, e-mail, data, status e link
+OSM; usuário suspenso usa marcador âmbar. Os **tiles** continuam sendo os
+públicos do OpenStreetMap (exigem internet). Junto, os cards do dashboard
+ganham subtexto (ex.: "92% do total", "2 com posição conhecida") e badge de
+**variação** desde a leitura anterior (estado em memória, sem persistência).
+
+**Motivo**:
+- Pedido em campo do usuário/coordenador: "os cards não fazem nada" e
+  "seria bom ter um card ou mapa com a posição".
+- O endpoint `GET /api/v1/admin/users` **já** retorna `last_lat`/`last_lng`/
+  `last_location_at` — nenhum backend novo, só SPA.
+- Vendor (não CDN): funciona atrás de túnel/offline para o JS/CSS, sem
+  dependência de terceiro em runtime; só os tiles OSM são remotos.
+- `fitBounds` só no 1º load ou quando o nº de marcadores muda — o refresh de
+  10s não rouba o pan/zoom do admin.
+
+**Alternativas Consideradas**:
+- CDN do Leaflet: dependência de rede externa para o JS/CSS e possível
+  quebra com CSP/offline.
+- Google Maps: chave de API e termos de uso — fora do escopo acadêmico.
+- Só link OSM (escopo original da DEC-018): insatisfatório em campo.
+- Mapa em aba própria: dashboard já é a tela de visão geral; manter embaixo
+  dos cards evita troca de aba para ver posição.
+
+**Impacto**:
+- Apenas `internal/admin/web/` (`index.html`, `style.css`, `app.js` +
+  `vendor/leaflet/`); backend intocado.
+- RNF01 intacto (nenhum áudio); LGPD: segue **só a última posição**, sem
+  histórico/trilha (DEC-018 mantida nessa parte).
+- RF09: critério de aceitação ganha "dashboard exibe mapa com última
+  posição" (atualizado em `docs/requisitos.md`).
