@@ -4,6 +4,69 @@ Este documento registra todas as alterações significativas do projeto.
 
 ---
 
+## 21/11/2026 - RF09: migração do painel admin de SPA vanilla para Vue 3
+
+### Contexto
+
+Spec `specs/003-admin-vue-migration/` aprovada para trocar apenas a tecnologia
+do painel administrativo: Vue 3, Vite, JavaScript, Vue Router, Pinia e Leaflet
+1.9.4. RF09, endpoints, autorização, backend e app Flutter permanecem iguais.
+
+### Alterações
+
+**Origem Vue — `admin-ui/` (novo)**
+
+- `package.json`/`package-lock.json`, `vite.config.js` (`base: /admin/`, saída
+  em `backend/internal/admin/web/`, proxy `/api`), `index.html`, `src/main.js`
+- `src/services/api.js` (fetch, headers, 401/429/rede) e `adminApi.js`
+  (`/api/v1/auth/login`, `/api/v1/admin/*`)
+- `src/stores/admin.js` (sessão só em memória, login, refresh 10s, ações e
+  toasts), `src/router/index.js` (duas rotas) e `utils/` (pt-BR, escape)
+- `src/views/LoginView.vue`, `AdminShell.vue` e componentes `AdminHeader`,
+  `DashboardStats`, `AdminMap`, `UsersTable`, `ToastMessage`
+- `public/vendor/leaflet/images/` (ícones locais); JS/CSS do Leaflet vêm do npm
+- `tests/` com 39 testes Vitest (`unit` + `components`)
+
+**Correção FR-031 (21/11/2026)**
+
+- `src/stores/admin.js`: estado `usersTabLoading` para exibir "Carregando…" na
+  primeira abertura de Usuários mesmo após o dashboard ter pré-carregado a lista
+- `src/components/UsersTable.vue`: condição de exibição inclui `usersTabLoading`
+- `tests/components/UsersTable.spec.js`: teste de regressão do cenário
+
+**Build incorporado**
+
+- `npm run build` gera `backend/internal/admin/web/index.html`, `assets/` com
+  hash e `vendor/leaflet/images/`; `app.js`/`style.css` antigos e o JS/CSS antigo
+  do vendor saem do diretório de saída
+- `backend/internal/admin/spa.go` sem alteração funcional (somente comentário
+  atualizado); `//go:embed web/*` cobre os novos arquivos
+
+**Docs/config**
+
+- DEC-020 registrada; `quickstart.md`, `docs/arquitetura.md`,
+  `docs/requisitos.md`, `PROJECT_STATE.md` e `CHANGELOG.md` atualizados
+- `.gitignore` cobre `admin-ui/node_modules/` e `admin-ui/dist/`
+
+### Verificação
+
+- `npm test`: **39/39** em 11 arquivos; `npm run build`: OK
+- `go build ./cmd/server` e `go test ./...`: OK
+- Validação temporária de `SPAHandler`: `/admin` → `/admin/`, SPA/fallback e
+  assets locais 200; nenhuma referência a CDN no bundle
+- Auditoria de `admin.js`: sem `localStorage`, `sessionStorage` ou cookies
+- FR-031: teste de regressão verde para "Carregando…" na primeira abertura de Usuários
+- `scripts/test-backend.ps1`: executado, mas **bloqueado pelo PostgreSQL local**
+  (`SQLSTATE 28P01` nas `DB_*`); SC-009 fica registrado como parcial no
+  quickstart
+
+### Motivo
+
+Substituir a SPA vanilla por Vue 3 sem alterar comportamento, mensagens, rotas,
+integração com Go nem regras de privacidade/negócio (RF09 inalterado).
+
+---
+
 ## 02/11/2026 - RF09 v2: cards com detalhes/variação e mapa Leaflet da última posição
 
 ### Contexto

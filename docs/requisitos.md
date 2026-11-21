@@ -4,7 +4,7 @@
 
 Este documento lista todos os requisitos funcionais e não funcionais do sistema RadioPX.
 
-> **Status de implementação (02/11/2026)**: este documento define **o que** o sistema deve fazer.
+> **Status de implementação (21/11/2026)**: este documento define **o que** o sistema deve fazer.
 > Nem todos os RF/RNF abaixo estão totalmente implementados na v1.
 > O mapeamento de lacunas e de escopo fica em `PROJECT_STATE.md` →
 > *Lacunas / Aderência aos Requisitos*. Em especial: RF02 (OAuth é trabalho futuro),
@@ -12,7 +12,8 @@ Este documento lista todos os requisitos funcionais e não funcionais do sistema
 > Já resolvidos: RF03 (um falante por vez, `voiceGuard`), RF06 (buffer/replay via
 > `request_replay`, 27/10), RF08 (fila com teto de 30s, 27/10), persistência
 > PostgreSQL (Fase 1), RNF06 (URL do servidor editável, Fase 3) e RF09
-> (painel admin com métricas, gestão de usuários e localização, 02/11).
+> (painel admin com métricas, gestão de usuários e localização, 02/11; SPA
+> migrada para Vue 3 em 21/11, sem mudança de RF09 — DEC-020).
 
 ## Requisitos Funcionais
 
@@ -166,10 +167,12 @@ O sistema deve oferecer um painel web de administração com:
 - Localização capturada de forma **passiva** (requests que já enviam lat/lng:
   `/channels/nearby` e `POST /channels`), sem histórico — só a última posição
 
-**Implementação (02/11/2026):** pacote `internal/admin` (API
-`/api/v1/admin/{stats,users}`), middleware `RequireAdmin`, migrações
+**Implementação (02/11/2026, SPA migrada em 21/11/2026):** pacote `internal/admin`
+(API `/api/v1/admin/{stats,users}`), middleware `RequireAdmin`, migrações
 `003_admin_users` + `004_user_last_location`, SPA em `internal/admin/web/`
-(`go:embed`). Ver DEC-017 e DEC-018.
+(`go:embed`). A origem da SPA passou a ser `admin-ui/` (Vue 3 + Vite + Pinia +
+Leaflet); o build continua gerando os mesmos artefatos embutidos e os critérios
+acima permanecem inalterados. Ver DEC-017, DEC-018 e DEC-020.
 
 ---
 
@@ -324,6 +327,8 @@ O sistema deve oferecer um painel web de administração com:
 
 - **Backend**: `internal/admin/` + `middleware.RequireAdmin` + bootstrap `ADMIN_EMAILS`
 - **Database**: `users.is_admin`, `users.last_lat/last_lng/last_location_at` (migrações 003/004)
-- **Frontend**: SPA `internal/admin/web/` (servida em `/admin`; sem tela no app mobile)
-- **Testes**: `internal/admin/handler_test.go` (11 casos), `user/service_test.go`
-  (suspend/promote/bootstrap/location), E2E manual + `test-backend.ps1` (regressão)
+- **Frontend**: origem `admin-ui/` (Vue 3); artefato buildado em
+  `internal/admin/web/` (servido em `/admin`; sem tela no app mobile)
+- **Testes**: `admin-ui/tests/**` (39 testes Vue), `internal/admin/handler_test.go`
+  (11 casos), `user/service_test.go` (suspend/promote/bootstrap/location), E2E
+  manual + `test-backend.ps1` (regressão)

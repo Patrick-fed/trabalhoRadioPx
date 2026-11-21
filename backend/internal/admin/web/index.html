@@ -1,132 +1,14 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <base href="/admin/">
-  <title>RadioPX — Admin</title>
-  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
-  <link rel="stylesheet" href="style.css">
-</head>
-<body>
-  <!-- Login -->
-  <div id="login-view" class="view">
-    <div class="login-card">
-      <h1>RadioPX</h1>
-      <p class="subtitle">Painel Administrativo</p>
-      <form id="login-form">
-        <label for="email">E-mail</label>
-        <input type="email" id="email" autocomplete="username" required>
-        <label for="password">Senha</label>
-        <input type="password" id="password" autocomplete="current-password" required>
-        <button type="submit" id="login-btn">Entrar</button>
-        <p id="login-error" class="error" hidden></p>
-      </form>
-    </div>
-  </div>
-
-  <!-- App -->
-  <div id="app-view" class="view" hidden>
-    <header>
-      <div class="brand">
-        <span class="logo">RadioPX</span>
-        <span class="tag">Admin</span>
-      </div>
-      <nav>
-        <button class="nav-btn active" data-tab="dashboard">Dashboard</button>
-        <button class="nav-btn" data-tab="users">Usuários</button>
-      </nav>
-      <div class="header-right">
-        <span id="admin-email" class="admin-email"></span>
-        <button id="logout-btn" class="btn-ghost">Sair</button>
-      </div>
-    </header>
-
-    <main>
-      <!-- Dashboard -->
-      <section id="dashboard-tab" class="tab">
-        <div class="cards" id="stats-cards">
-          <div class="card">
-            <span class="card-label">Usuários</span>
-            <span class="card-value" id="stat-users">—</span>
-            <span class="card-sub" id="stat-users-sub"></span>
-            <span class="delta" id="stat-users-delta" hidden></span>
-          </div>
-          <div class="card">
-            <span class="card-label">Ativos</span>
-            <span class="card-value" id="stat-active">—</span>
-            <span class="card-sub" id="stat-active-sub"></span>
-            <span class="delta" id="stat-active-delta" hidden></span>
-          </div>
-          <div class="card">
-            <span class="card-label">Canais</span>
-            <span class="card-value" id="stat-channels">—</span>
-            <span class="card-sub" id="stat-channels-sub"></span>
-            <span class="delta" id="stat-channels-delta" hidden></span>
-          </div>
-          <div class="card">
-            <span class="card-label">Conexões WS</span>
-            <span class="card-value" id="stat-ws">—</span>
-            <span class="card-sub" id="stat-ws-sub"></span>
-          </div>
-          <div class="card">
-            <span class="card-label">Salas ativas</span>
-            <span class="card-value" id="stat-rooms">—</span>
-            <span class="card-sub" id="stat-rooms-sub"></span>
-          </div>
-          <div class="card">
-            <span class="card-label">Transmitindo</span>
-            <span class="card-value" id="stat-tx">—</span>
-            <span class="card-sub" id="stat-tx-sub"></span>
-          </div>
-          <div class="card card-loc">
-            <span class="card-label">Localização</span>
-            <span class="card-value" id="stat-loc">—</span>
-            <span class="card-sub" id="stat-loc-sub">com posição conhecida</span>
-            <span class="delta" id="stat-loc-delta" hidden></span>
-          </div>
-        </div>
-        <p class="hint">Atualização automática a cada 10s. Variação desde a leitura anterior.</p>
-
-        <h2 class="section-title">Última posição dos usuários</h2>
-        <div id="map-wrap">
-          <div id="map"></div>
-          <p id="map-empty" hidden>Nenhum usuário com posição conhecida ainda.</p>
-        </div>
-        <p class="hint">Marcadores da última posição conhecida (sem histórico). Âmbar = usuário suspenso. Dados: OpenStreetMap.</p>
-      </section>
-
-      <!-- Usuários -->
-      <section id="users-tab" class="tab" hidden>
-        <div class="toolbar">
-          <input type="search" id="user-search" placeholder="Buscar por nome ou e-mail…">
-          <button id="refresh-users" class="btn-secondary">Atualizar</button>
-        </div>
-        <div class="table-wrap">
-          <table id="users-table">
-            <thead>
-              <tr>
-                <th>Nome</th>
-                <th>E-mail</th>
-                <th>Status</th>
-                <th>Papel</th>
-                <th>Localização</th>
-                <th>Ações</th>
-              </tr>
-            </thead>
-            <tbody id="users-tbody">
-              <tr><td colspan="6" class="empty">Carregando…</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <p id="users-error" class="error" hidden></p>
-      </section>
-    </main>
-
-    <div id="toast" class="toast" hidden></div>
-  </div>
-
-  <script src="vendor/leaflet/leaflet.js"></script>
-  <script src="app.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/admin/" />
+    <title>RadioPX — Admin</title>
+    <script type="module" crossorigin src="/admin/assets/index-CACaaIZD.js"></script>
+    <link rel="stylesheet" crossorigin href="/admin/assets/index-DhBCdCK1.css">
+  </head>
+  <body>
+    <div id="app"></div>
+  </body>
 </html>

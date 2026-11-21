@@ -546,3 +546,45 @@ ganham subtexto (ex.: "92% do total", "2 com posição conhecida") e badge de
   histórico/trilha (DEC-018 mantida nessa parte).
 - RF09: critério de aceitação ganha "dashboard exibe mapa com última
   posição" (atualizado em `docs/requisitos.md`).
+
+---
+
+## DEC-020 — Painel administrativo em Vue 3 com build Vite (RF09)
+
+**Data**: 21/11/2026
+
+**Decisão**: substituir a SPA vanilla de `internal/admin/web/` por uma aplicação
+Vue 3 (Vue Router, Pinia, Vite, Vitest e Leaflet 1.9.4) mantida em `admin-ui/` na
+raiz. O Vite gera `index.html`, `assets/` e `vendor/leaflet/images/` diretamente
+em `backend/internal/admin/web/`, com `base: '/admin/'` e `emptyOutDir: true`.
+Os artefatos gerados são versionados porque o `//go:embed web/*` exige arquivos
+físicos no momento da compilação do Go. Esta decisão supera parcialmente a
+DEC-017 apenas no item "sem projeto separado, sem nova dependência".
+
+**Motivo**:
+- O solicitante exigiu Vue 3 para o painel admin, mantendo o restante do
+  sistema (Go/PostgreSQL/Flutter/WebSocket) inalterado.
+- Manter as fontes fora de `web/` evita que `node_modules` entre no binário e
+  preserva o deploy de binário único da DEC-003.
+- O comportamento observável, os endpoints, as mensagens e o token apenas em
+  memória permanecem idênticos aos da SPA vanilla.
+- JS/CSS do Leaflet entram pelo bundle e os ícones locais continuam servidos em
+  `/admin/vendor/leaflet/images/`, preservando a DEC-019.
+
+**Alternativas Consideradas**:
+- Continuar com JS vanilla: atende DEC-017, mas não atende à migração pedida.
+- Servir `admin-ui/dist` com servidor estático separado: quebra binário único,
+  mesma origem e a DEC-003.
+- Colocar fontes/`node_modules` dentro de `backend/internal/admin/web/`: o
+  `go:embed` incluiria dependências desnecessárias no binário.
+- Flutter Web: build separado e peso maior sem ganho para uso administrativo
+  esporádico.
+
+**Impacto**:
+- Novo diretório `admin-ui/` com `package.json`/`package-lock.json`, Vitest e
+  build Vite; `frontend/` continua sendo exclusivamente o app Flutter.
+- `backend/internal/admin/spa.go`, `handler.go` e regras de `RequireAdmin`
+  permanecem sem alteração funcional.
+- Nenhum endpoint, campo, status code ou mensagem da API é alterado.
+- Testes de regressão: Vitest na SPA, `go test ./...` e
+  `scripts/test-backend.ps1` no backend.
