@@ -36,9 +36,9 @@ func (h *SPAHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Redirect /admin → /admin/ so the browser resolves relative assets
-	// (style.css, app.js) against /admin/ instead of the site root.
-	// Without this, assets 404, app.js never loads and the login form
+	// Redirect /admin → /admin/ so the browser resolves bundled assets
+	// against /admin/ instead of the site root.
+	// Without this, assets 404, the Vue bundle never loads and the login form
 	// does a native GET submit (page appears to just reload).
 	if r.URL.Path == "/admin" {
 		target := "/admin/"

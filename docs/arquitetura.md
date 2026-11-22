@@ -14,6 +14,7 @@ Arquitetura monolítica modular com separação por responsabilidades. O sistema
 | Voice | ✅ Completo | ✅ Completo | ✅ |
 | Location | ✅ Completo | ✅ Completo | ✅ |
 | Profile | N/A | ✅ Completo | ✅ |
+| Admin Web (Vue 3) | N/A | ✅ Completo | ✅ |
 
 > **Nota (27/10/2026)**: a tabela acima é aspiracional. Estado real: Voice com um falante por vez
 > (`voiceGuard`, 27/10) e **buffer/replay conectados desde 27/10** (RF06/RF08), Location reduzida a
@@ -101,7 +102,7 @@ backend/
 │   │   ├── handler.go                  # API admin (stats/users/patch/delete)
 │   │   ├── handler_test.go             # 401/403/CRUD/self-guard
 │   │   ├── spa.go                      # go:embed web/ + fallback SPA
-│   │   └── web/                        # index.html, style.css, app.js
+│   │   └── web/                        # build Vue: index.html, assets/, vendor/leaflet/images/
 │   │
 │   ├── voice/
 │   │   ├── handler.go
@@ -153,7 +154,8 @@ backend/
 - **Dependências**: User, Channel, Voice, Hub (deps injetadas); `RequireAdmin`
 - **Endpoints**: `/api/v1/admin/{stats,users}` (GET/PATCH/DELETE) + SPA em `/admin`
 - **Identidade**: `users.is_admin` + bootstrap `ADMIN_EMAILS` (DEC-017);
-  última localização passiva em `users.last_*` (DEC-018)
+  última localização passiva em `users.last_*` (DEC-018); SPA migrada para
+  Vue 3 com build Vite (DEC-022), servida pelos mesmos handlers
 
 #### Channel Module
 - **Responsabilidade**: Alocação e gestão de canais
@@ -296,6 +298,38 @@ lib/
 #### Settings Feature
 - **Responsabilidade**: Configuração do servidor (RNF06)
 - **Widgets**: Server URL sheet (Testar/Salvar)
+
+## Admin Web (Vue 3)
+
+O painel administrativo mantido em `/admin` é uma SPA Vue 3 com Vite,
+JavaScript (sem TypeScript), Vue Router, Pinia e Leaflet 1.9.4 (DEC-022).
+
+### Estrutura
+
+```
+admin-ui/
+├── public/vendor/leaflet/images/   # ícones copiados para o build
+├── src/
+│   ├── assets/admin.css            # estilos portados do painel vanilla
+│   ├── components/                 # AdminHeader, DashboardStats, AdminMap, UsersTable, ToastMessage
+│   ├── router/index.js             # login (/login) e casca autenticada (/)
+│   ├── services/                   # api.js (fetch/401/429) + adminApi.js
+│   ├── stores/admin.js             # sessão em memória, refresh, ações e timer 10s
+│   ├── utils/                      # formatação pt-BR e escape de HTML
+│   └── views/                      # LoginView e AdminShell
+└── tests/                          # Vitest: unit e components
+```
+
+### Integração
+
+- `npm run build` gera `backend/internal/admin/web/`; `//go:embed web/*` e
+  `SPAHandler` permanecem inalterados.
+- Vue Router controla apenas login/casca autenticada, com `base` `/admin/`;
+  Dashboard e Usuários são abas internas em `AdminShell.vue`, sem mudar URL.
+- O token JWT vive somente em Pinia/memória; não há `localStorage`,
+  `sessionStorage`, cookies nem renovação silenciosa.
+- API permanece na mesma origem (`API = ""`); em desenvolvimento o Vite faz
+  proxy de `/api` para `localhost:8080`.
 
 ## Comunicação
 

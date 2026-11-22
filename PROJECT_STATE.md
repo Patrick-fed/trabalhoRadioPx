@@ -16,6 +16,16 @@ variação** desde a leitura anterior. Backend intocado — dados vêm de
 `GET /api/v1/admin/users`. Ver [CHANGELOG](CHANGELOG.md) de 02/11/2026 e
 **DEC-019**.
 
+Em 21/11/2026 o painel admin foi migrado de SPA vanilla para **Vue 3 + Vite +
+Pinia + Vue Router + Leaflet 1.9.4** (spec `specs/003-admin-vue-migration/`,
+DEC-022). A origem passou a ser `admin-ui/`; o build continua gerando
+`backend/internal/admin/web/` para o mesmo `go:embed`/`SPAHandler`. RF09,
+endpoints, backend, Flutter e WebSocket não mudaram. FR-031 foi corrigido em
+21/11/2026: "Carregando…" aparece na primeira abertura de Usuários mesmo após o
+dashboard ter pré-carregado a lista. Ver [CHANGELOG](CHANGELOG.md) de
+21/11/2026 e `quickstart.md` da spec (SC-009 parcial: `test-backend.ps1`
+bloqueado por PostgreSQL local).
+
 Em 02/11/2026 o painel administrativo (RF09, spec `specs/002-admin-panel/`)
 entrou em vigor: coluna `users.is_admin` (migração 003) com bootstrap idempotente
 via env `ADMIN_EMAILS`, middleware `RequireAdmin` (banco como fonte da verdade,
@@ -255,6 +265,34 @@ Estes itens **não** serão implementados na v1 (persistência em PostgreSQL des
 ---
 
 ## Última Alteração
+
+**21/11/2026 - RF09: painel admin migrado para Vue 3**
+
+**Data**: 21/11/2026
+
+**Descrição**:
+- Nova origem `admin-ui/` (Vue 3, Vite, JavaScript, Vue Router, Pinia, Leaflet
+  1.9.4); DEC-022 registrada
+- `npm run build` gera `backend/internal/admin/web/` (index com `<base
+  href="/admin/">`, `assets/` com hash, ícones Leaflet locais); `spa.go` sem
+  alteração funcional (somente comentário)
+- Sessão JWT só em memória; abas internas sem mudar URL; API na mesma origem
+- FR-031 corrigido: teste de regressão cobre "Carregando…" na primeira abertura
+  de Usuários após pré-carregamento do dashboard
+- 39 testes Vitest verdes; `go build`/`go test ./...` verdes; auditoria sem CDN
+  e sem persistência de token
+
+**Verificação**: `npm test` 39/39; `npm run build` OK; `go build ./cmd/server`
+OK; validação de `SPAHandler` (redirect, fallback e assets) OK.
+`scripts/test-backend.ps1` executado, mas bloqueado por autenticação PostgreSQL
+local (`SQLSTATE 28P01`) — SC-009 parcial. Detalhes em `CHANGELOG.md` e no
+`quickstart.md` da spec.
+
+**Docs**: DEC-022, `spec.md`, `tasks.md`, `checklists/requirements.md`,
+`quickstart.md`, `docs/arquitetura.md`, `docs/requisitos.md`, `CHANGELOG.md`,
+este arquivo.
+
+---
 
 **10/11/2026 - Localização periódica + endereço reverso no painel admin**
 
@@ -750,6 +788,10 @@ frontend intocado. Detalhes em `CHANGELOG.md`.
    (`specs/002-admin-panel/`: is_admin + localização passiva + APIs + SPA;
    commit `8d4af6b` em `feature-login`, `dev` e `main`; validação em campo
    do painel pendente)
+6. ~~**Migração do painel para Vue 3**~~ — **Concluída em 21/11/2026**
+   (`specs/003-admin-vue-migration/`: origem `admin-ui/`, 39 testes Vue,
+   FR-031 corrigido, build embedado, backend intocado; `test-backend.ps1`
+   segue dependente de PostgreSQL local válido)
 
 ---
 
@@ -853,9 +895,9 @@ frontend intocado. Detalhes em `CHANGELOG.md`.
 
 ## Última Atualização
 
-**Data**: 10/11/2026
+**Data**: 21/11/2026
 
-**Hora**: 2026-11-10
+**Hora**: 2026-11-21
 
 **Por**: OpenCode (assistente AI)
 

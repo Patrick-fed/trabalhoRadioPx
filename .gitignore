@@ -11,3 +11,7 @@ frontend/android/build/
 
 # Editor
 .vscode/
+
+# Node.js / admin-ui
+admin-ui/node_modules/
+admin-ui/dist/
