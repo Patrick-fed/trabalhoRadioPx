@@ -15,6 +15,7 @@ import (
 	"github.com/radiopx/backend/internal/auth"
 	"github.com/radiopx/backend/internal/channel"
 	"github.com/radiopx/backend/internal/db"
+	"github.com/radiopx/backend/internal/location"
 	"github.com/radiopx/backend/internal/middleware"
 	"github.com/radiopx/backend/internal/user"
 	"github.com/radiopx/backend/internal/voice"
@@ -117,6 +118,7 @@ func main() {
 
 	userHandler := user.NewUserHandler(userService)
 	channelHandler := channel.NewChannelHandler(channelService, userService)
+	locationHandler := location.NewLocationHandler(userService)
 	voiceHandler := voice.NewVoiceHandler(voiceService, hub, audioBuffer)
 	adminHandler := admin.NewHandler(userService, admin.StatsSource{
 		Users:    userService,
@@ -129,7 +131,7 @@ func main() {
 		log.Fatalf("Admin SPA: %v", err)
 	}
 
-	setupRoutes(userHandler, channelHandler, voiceHandler, authService, userService, adminHandler, adminSPA)
+	setupRoutes(userHandler, channelHandler, locationHandler, voiceHandler, authService, userService, adminHandler, adminSPA)
 
 	c := cors.New(cors.Options{
 		AllowedOrigins:   []string{"http://localhost:*", "https://*.ngrok-free.app", "https://*.ngrok-free.dev"},
@@ -152,6 +154,7 @@ func main() {
 func setupRoutes(
 	userHandler *user.UserHandler,
 	channelHandler *channel.ChannelHandler,
+	locationHandler *location.LocationHandler,
 	voiceHandler *voice.VoiceHandler,
 	authService *auth.AuthService,
 	userService *user.UserService,
@@ -232,6 +235,7 @@ func setupRoutes(
 		}
 		userHandler.HandleChangePasswordByUserID(w, r, userID)
 	})
+	protected.HandleFunc("/api/v1/location", locationHandler.HandleUpdate)
 
 	protectedWithAuth := middleware.AuthMiddleware(authService)(protected)
 
@@ -267,6 +271,7 @@ func setupRoutes(
 	http.Handle("/api/v1/channels/", injector)
 	http.Handle("/api/v1/user/profile", injector)
 	http.Handle("/api/v1/user/change-password", injector)
+	http.Handle("/api/v1/location", injector)
 	http.Handle("/api/v1/admin/", adminInjector)
 	// SPA estática (login/dashboard/usuários) — sem auth; as APIs continuam protegidas.
 	http.Handle("/admin", adminSPA)

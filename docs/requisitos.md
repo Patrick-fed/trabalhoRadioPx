@@ -73,6 +73,10 @@ O sistema deve descobrir canais baseado em GPS:
 - Canais fora do raio não são exibidos
 - Precisão de 100m na detecção
 
+**Implementação (10/11/2026):** além do envio passivo nas chamadas de canais,
+o app reporta a posição a cada 30s via `POST /api/v1/location` (timer global
+enquanto logado, pausado em background; ver DEC-020).
+
 ---
 
 ### RF05 - Alocação Dinâmica de Canais
@@ -157,6 +161,8 @@ O sistema deve oferecer um painel web de administração com:
 - Dashboard exibe **mapa** (Leaflet + tiles OSM) com um marcador por usuário
   que tenha posição conhecida; popup com nome, data, status e link OSM;
   suspenso = marcador âmbar; sem posição = sem marcador
+- Popup do mapa mostra **endereço legível** (reverse geocoding Nominatim/OSM
+  em pt-BR, lazy com cache; "endereço indisponível" em falha)
 - Card "Localização" mostra quantos usuários têm posição conhecida
 - Lista de usuários **nunca** expõe `password_hash`
 - Suspensão invalida o login (`Authenticate` rejeita `!IsActive`)
@@ -164,7 +170,9 @@ O sistema deve oferecer um painel web de administração com:
 - Cada usuário exibe a última posição (`last_lat`/`last_lng`/`last_location_at`)
   com link para OpenStreetMap, ou "—" se nunca enviou
 - Localização capturada de forma **passiva** (requests que já enviam lat/lng:
-  `/channels/nearby` e `POST /channels`), sem histórico — só a última posição
+  `/channels/nearby` e `POST /channels`) e por **relatório periódico**
+  (`POST /api/v1/location`, a cada 30s — DEC-020), sem histórico — só a
+  última posição
 
 **Implementação (02/11/2026):** pacote `internal/admin` (API
 `/api/v1/admin/{stats,users}`), middleware `RequireAdmin`, migrações

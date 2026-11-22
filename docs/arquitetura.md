@@ -166,10 +166,10 @@ backend/
 - **Endpoint**: `/ws/audio/?channel=...&token=...` (autenticado por JWT)
 
 #### Location Module
-- **Responsabilidade**: Cálculo de distância (Haversine) para proximidade
-- **Dependências**: Nenhuma
-- **Código**: apenas `distance.go` (handler/service removidos em 27/10/2026 —
-  a localização trafega nos payloads da API de canais)
+- **Responsabilidade**: Cálculo de distância (Haversine) para proximidade e
+  relatório periódico de posição
+- **Dependências**: User module (grava `last_lat`/`last_lng`)
+- **Código**: `distance.go` + `handler.go` (`POST /api/v1/location`, DEC-020)
 
 #### Middleware
 - **Responsabilidade**: Interceptadores HTTP
@@ -185,6 +185,7 @@ lib/
 ├── core/
 │   ├── api_client.dart                 # Cliente HTTP (package:http, timeout 10s)
 │   ├── config.dart                     # URL da API em runtime (RNF06)
+│   ├── location_reporter.dart          # Timer global 30s → POST /location (DEC-020)
 │   │
 │   ├── websocket/
 │   │   └── websocket_service.dart      # Serviço WebSocket (wss derivado)
@@ -283,8 +284,9 @@ lib/
 - **Services**: Audio service, PTT service, Audio queue
 
 #### Location Feature
-- **Responsabilidade**: GPS e proximidade
-- **Services**: Location service
+- **Responsabilidade**: GPS, proximidade e relatório periódico (RF04)
+- **Services**: Location service (`getCurrentLocation`, `reportPosition`)
+- **Core**: `LocationReporter` (singleton, 30s, pausa em background)
 
 #### Profile Feature
 - **Responsabilidade**: Perfil do usuário
@@ -312,16 +314,19 @@ lib/
 - `GET /api/v1/channels` - Listar canais
 - `POST /api/v1/channels/join` - Entrar no canal
 - `POST /api/v1/channels/leave` - Sair do canal
+- `POST /api/v1/user/change-password` - Alterar senha
+- `POST /api/v1/location` - Reportar posição (a cada 30s, DEC-020)
 - `GET /api/v1/admin/stats` - Métricas (requer `is_admin`, RF09)
 - `GET /api/v1/admin/users` - Lista de usuários (sem `password_hash`)
 - `PATCH /api/v1/admin/users/{id}` - Suspender/reativar/promover/demover
 - `DELETE /api/v1/admin/users/{id}` - Excluir usuário
 - `GET /admin` - Painel web SPA embutida (sem auth; APIs protegidas)
 
-> Localização não tem endpoint próprio: o app envia as coordenadas do GPS nos
-> payloads da API de canais (criar/listar próximos). O backend calcula a
-> distância com `internal/location.CalculateDistance` e grava a **última**
-> posição de forma passiva em `users.last_*` (RF09/DEC-018).
+> Localização: o app envia coordenadas do GPS nos payloads da API de canais
+> (captura passiva) **e** reporta a cada 30s via `POST /api/v1/location`
+> (DEC-020). O backend grava a **última** posição em `users.last_*`
+> (RF09/DEC-018), sem histórico. O painel admin resolve endereço no browser
+> via Nominatim/OSM (lazy, cache em memória).
 
 ### WebSocket (Tempo Real)
 

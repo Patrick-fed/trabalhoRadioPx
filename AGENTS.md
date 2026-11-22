@@ -136,6 +136,7 @@ flutter test
 - `GET /api/v1/channels` - Listar canais
 - `POST /api/v1/channels/join` - Entrar no canal
 - `POST /api/v1/channels/leave` - Sair do canal
+- `POST /api/v1/location` - Reportar posição (a cada 30s)
 
 > Localização não tem endpoint próprio (removido em 27/10/2026): o app envia as
 > coordenadas do GPS nos payloads da API de canais.

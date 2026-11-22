@@ -14,7 +14,7 @@ class AudioPacket {
     required this.audio,
     required this.isPtt,
     required this.timestamp,
-    this.codec = 'opus',
+    this.codec = 'pcm16',
   });
 
   factory AudioPacket.fromJson(Map<String, dynamic> json) {
@@ -25,7 +25,7 @@ class AudioPacket {
       audio: List<int>.from(json['audio'] as List),
       isPtt: json['is_ptt'] as bool,
       timestamp: DateTime.parse(json['timestamp'] as String),
-      codec: json['codec'] as String? ?? 'opus',
+      codec: json['codec'] as String? ?? 'pcm16',
     );
   }
 

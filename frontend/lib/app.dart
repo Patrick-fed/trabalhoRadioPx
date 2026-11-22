@@ -5,6 +5,7 @@ import 'features/channels/screens/channels_screen.dart';
 import 'features/voice/screens/voice_screen.dart';
 import 'features/profile/screens/profile_screen.dart';
 import 'features/auth/services/auth_service.dart';
+import 'core/location_reporter.dart';
 
 class RadioPXApp extends StatelessWidget {
   const RadioPXApp({super.key});
@@ -85,10 +86,36 @@ class MainScreen extends StatefulWidget {
   State<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
+class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   int _currentIndex = 0;
   String? _selectedChannelId;
   String? _selectedChannelName;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    LocationReporter.instance.start();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    LocationReporter.instance.stop();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Pause reporting in background; resume immediately when back to foreground.
+    if (state == AppLifecycleState.resumed) {
+      LocationReporter.instance.start();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      LocationReporter.instance.stop();
+    }
+  }
 
   void _onChannelSelected(String channelId, String channelName) {
     setState(() {

@@ -546,3 +546,96 @@ ganham subtexto (ex.: "92% do total", "2 com posição conhecida") e badge de
   histórico/trilha (DEC-018 mantida nessa parte).
 - RF09: critério de aceitação ganha "dashboard exibe mapa com última
   posição" (atualizado em `docs/requisitos.md`).
+
+## DEC-020 — Endpoint dedicado de localização + endereço reverso no admin
+
+**Data**: 10/11/2026
+
+**Decisão**: duas mudanças em conjunto:
+
+1. **Endpoint dedicado `POST /api/v1/location`** (autenticado, `X-User-ID` via
+   injector): o app passa a reportar sua posição a cada **30s** por um
+   `Timer.periodic` global (`core/location_reporter.dart`), ativo enquanto o
+   usuário está logado e **pausado em background**. Grava as mesmas colunas
+   `last_lat`/`last_lng`/`last_location_at` (best-effort, mesmo contrato do
+   `recordLocation`), sem histórico.
+2. **Reverse geocoding no painel via SPA**: ao abrir um popup do mapa, o
+   `app.js` consulta o **Nominatim/OSM** (`display_name`, pt-BR) de forma
+   lazy, com cache em memória por coordenadas (4 casas ≈ 11m) e fila de
+   1 req/s (política Nominatim). Backend Go não faz chamada externa.
+
+**Motivo**:
+- A captura passiva da DEC-018 só atualizava quando o usuário usava a tela de
+  canais — o marcador ficava obsoleto; RF04 já exige "localização atualizada
+  a cada 30 segundos".
+- Endereço legível ("rua, bairro, cidade") melhora a leitura do popup; feito
+  no browser evita primeiro client HTTP outbound do Go e coluna nova no banco.
+
+**Alternativas Consideradas**:
+- Reverse geocode no backend com coluna `last_address` (migração 005): mais
+  complexo, latência no caminho de gravação e dependência externa no servidor —
+  rejeitado para v1.
+- Timer acoplado ao polling de 10s da tela de canais: posição só atualiza se o
+  usuário estiver na aba de canais — rejeitado.
+- Google Maps/Places: chave de API e custo — rejeitado (coerência com tiles OSM).
+
+**Impacto**:
+- Revisa a alternativa rejeitada da **DEC-018** ("sem endpoint próprio de
+  localização") — o endpoint passa a existir; a captura passiva em
+  `nearby`/`create` continua ativa como fallback.
+- ~2 req/min por app logado; atrás do ngrok isso soma ao rate limit global
+  apenas nos endpoints de auth (o `/location` não é rate-limited).
+- Nominatim é serviço de terceiro (LGPD: só coordenadas, sem identificação;
+  política de uso exige 1 req/s — já respeitado). Falha de geocoding não
+  quebra o popup ("endereço indisponível").
+- RNF01/LGPD inalterados: segue **só a última posição**, sem histórico.
+
+---
+
+## DEC-021 — Codec PCM16 declarado na v1 (Opus adiado)
+
+**Data**: 17/11/2026
+
+**Decisão**: o áudio da v1 é **PCM16 crudo** (amostras de 16 bits em base64,
+sem compressão) e é isso que o sistema declara. Opus fica **fora do escopo v1**
+como trabalho futuro.
+
+**Contexto / estado real do código**:
+
+- Backend: `NewAudioPacket` já declara `Codec: "pcm16"`
+  (`backend/internal/voice/websocket.go:44`, desde o commit `f8251e8`,
+  18/10/2026) — a pendência de 12/11 que apontava `"opus"` estava desatualizada.
+- O relay vivo do WebSocket **não inclui campo `codec`** no payload
+  (`backend/pkg/websocket/client.go` monta `audio/is_ptt/user_id/sender/
+  sequence/timestamp`).
+- Frontend: o model `AudioPacket` (`audio_packet.dart`) mantinha default
+  `'opus'` — **corrigido para `'pcm16'`** nesta decisão, para o contrato não
+  mentir quando o JSON não traz o campo. O player real já usava
+  `Codec.pcm16` (`stream_audio_player.dart`).
+
+**Motivo**:
+- Opus exigiria lib de codec no app (ex.: `opus_dart`) e no servidor, com
+  integração de FFI/build Android — complexidade sem ganho mensurável para um
+  protótipo acadêmico rodando em LAN/túnel.
+- Declarar `opus` com tráfego PCM16 seria um contrato falso para quem lê o
+  payload (ferramentas/depuração).
+- RF03 (latência < 500ms) e RNF02 continuam verificáveis em campo (C1) com
+  PCM16; a compressão só se torna crítica em escala/custo de banda.
+
+**Alternativas Consideradas**:
+- **Opus real (encode/decode)**: reduziria o tráfego em ~50× (≈1,5 Mbps →
+  ≈30 kbps) — rejeitado para v1 por dependência de lib nativa nos dois lados;
+  candidato natural para fase de performance (RNF02).
+- **Manter declaração `opus` com tráfego PCM16**: rejeitado — divergência de
+  documentação conhecida é pior que o formato cru.
+- **Remover o campo `codec`**: rejeitado — mantém o payload auto-descritivo e
+  prepara a troca futura de formato sem quebra de contrato.
+
+**Impacto**:
+- Banda de streaming ~50× maior que Opus — aceito para v1; registrada como
+  limitação conhecida (não bloqueia o gate de release).
+- `plano-de-testes-pendencias.md` §6 nº 2 (pendência de requisito/decisão do
+  codec) fica **encerrada** por esta DEC.
+- Migração futura para Opus: inclui campo `codec` no payload do relay,
+  encoder no app e decoder no player — escopo de trabalho futuro junto com
+  testes de carga (RNF02).

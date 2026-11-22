@@ -1,10 +1,43 @@
 param(
-  [string]$BaseUrl = "http://localhost:8080"
+  [string]$BaseUrl = "http://localhost:8080",
+  [string]$AdminEmail = "",
+  [string]$AdminPassword = ""
 )
 
 $ErrorActionPreference = "Stop"
 $script:Pass = 0
 $script:Fail = 0
+
+# ---------------------------------------------------------------- Admin env
+# Bootstrap RF09: o servidor so promove ADMIN_EMAILS no boot, entao o script
+# garante o e-mail do admin no ambiente (herdado por qualquer processo filho
+# que ele stesso iniciar) e, se necessario, reinicia o backend depois do
+# registro (ver Restart-Backend / bloco 0b).
+$script:Root = Split-Path -Parent $PSScriptRoot
+if (-not $AdminEmail) {
+  if ($env:RADIOPX_ADMIN_EMAIL) { $AdminEmail = $env:RADIOPX_ADMIN_EMAIL }
+  else { $AdminEmail = "admin@radiopx.test" }
+}
+if (-not $AdminPassword) {
+  if ($env:RADIOPX_ADMIN_PASSWORD) { $AdminPassword = $env:RADIOPX_ADMIN_PASSWORD }
+  else { $AdminPassword = "admin12345" }
+}
+$script:AdminEmail = $AdminEmail
+$script:AdminPassword = $AdminPassword
+
+$adminEmails = @()
+if ($env:ADMIN_EMAILS) { $adminEmails += ($env:ADMIN_EMAILS -split ',') }
+foreach ($f in @((Join-Path $script:Root "backend\.env"), (Join-Path $script:Root ".env"))) {
+  if (Test-Path $f) {
+    foreach ($line in (Get-Content $f -ErrorAction SilentlyContinue)) {
+      if ($line -match '^\s*ADMIN_EMAILS\s*=\s*(.+)$') {
+        $adminEmails += ($Matches[1].Trim().Trim('"').Trim("'") -split ',')
+      }
+    }
+  }
+}
+$adminEmails += $AdminEmail
+$env:ADMIN_EMAILS = (($adminEmails | ForEach-Object { $_.Trim() } | Where-Object { $_ }) | Select-Object -Unique) -join ','
 
 function Write-Step($Text) {
   Write-Host ""
@@ -86,20 +119,135 @@ function Close-Ws($ws) {
   $ws.Dispose()
 }
 
+# Reinicia o backend para aplicar o bootstrap de ADMIN_EMAILS (so roda no boot).
+# Garante que backend/server.exe exista ANTES de matar o processo atual.
+function Restart-Backend {
+  $exe = Join-Path $script:Root "backend\server.exe"
+  if (-not (Test-Path $exe)) {
+    Write-Host "server.exe ausente - compilando backend..."
+    Push-Location (Join-Path $script:Root "backend")
+    try {
+      & go build -o server.exe ./cmd/server
+      if ($LASTEXITCODE -ne 0 -or -not (Test-Path $exe)) {
+        throw "Falha ao compilar backend/server.exe (go build exit=$LASTEXITCODE)"
+      }
+    }
+    finally { Pop-Location }
+  }
+
+  $port = 8080
+  try { $port = ([uri]$BaseUrl).Port } catch { }
+  $conns = @(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue)
+  foreach ($c in $conns) {
+    try { Stop-Process -Id $c.OwningProcess -Force -ErrorAction Stop }
+    catch { Write-Host "AVISO: nao foi possivel parar PID $($c.OwningProcess): $($_.Exception.Message)" -ForegroundColor Yellow }
+  }
+  if ($conns.Count -gt 0) { Start-Sleep -Seconds 1 }
+
+  # Filho herda $env:ADMIN_EMAILS (definido no topo do script).
+  Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -WindowStyle Hidden | Out-Null
+  $ok = $false
+  for ($i = 0; $i -lt 20; $i++) {
+    Start-Sleep -Milliseconds 500
+    $h = Invoke-Json "GET" "/health"
+    if ($h.Code -eq 200) { $ok = $true; break }
+  }
+  if (-not $ok) { throw "Backend nao voltou a responder apos reinicio" }
+  Write-Host "Backend reiniciado com ADMIN_EMAILS=$env:ADMIN_EMAILS" -ForegroundColor Yellow
+}
+
 # ---------------------------------------------------------------- 0. Health
 Write-Step "0. Servidor"
 $health = Invoke-Json "GET" "/health"
+$script:ServerStartedByScript = $false
 if ($health.Code -ne 200) {
   $exe = "C:\RadioPx\backend\server.exe"
   if (Test-Path $exe) {
     Write-Host "Servidor parado. Iniciando $exe ..."
     Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -WindowStyle Hidden | Out-Null
+    $script:ServerStartedByScript = $true
     Start-Sleep -Seconds 2
     $health = Invoke-Json "GET" "/health"
   }
 }
 $healthOk = ($health.Code -eq 200 -and ($health.Body -match '"status"\s*:\s*"ok"'))
 Check "Health check $BaseUrl/health" $healthOk $health.Body
+
+# ---------------------------------------------------------------- 0b. Admin bootstrap (RF09)
+# O servidor so promove ADMIN_EMAILS no boot. Fluxo:
+#   1. reinicia o backend (se o script nao acabou de subi-lo) para zerar o
+#      rate limit de auth da rodada anterior (10/min por IP) e aplicar env;
+#   2. tenta logar; se o usuario nao existir, registra;
+#   3. se ainda nao for admin (registro apos o boot), reinicia de novo para
+#      o bootstrap promover e re-login.
+Write-Step "0b. Admin bootstrap (ADMIN_EMAILS)"
+$adminReady = $false
+$tokenAd = $null
+$adminUserId = $null
+
+if (-not $script:ServerStartedByScript) {
+  try { Restart-Backend }
+  catch { Write-Host "AVISO: reinicio inicial falhou: $($_.Exception.Message)" -ForegroundColor Yellow }
+}
+
+$adminLogin = Invoke-Json "POST" "/api/v1/auth/login" @{ email = $script:AdminEmail; password = $script:AdminPassword }
+if ($adminLogin.Code -eq 429) {
+  # Janela de rate limit ainda cheia (reinicio falhou?): uma unica nova tentativa.
+  try {
+    Restart-Backend
+    $adminLogin = Invoke-Json "POST" "/api/v1/auth/login" @{ email = $script:AdminEmail; password = $script:AdminPassword }
+  } catch { }
+}
+if ($adminLogin.Code -eq 401) {
+  $adminReg = Invoke-Json "POST" "/api/v1/auth/register" @{ name = "Admin RadioPX"; email = $script:AdminEmail; password = $script:AdminPassword }
+  if ($adminReg.Code -eq 201 -or $adminReg.Code -eq 409) {
+    $adminLogin = Invoke-Json "POST" "/api/v1/auth/login" @{ email = $script:AdminEmail; password = $script:AdminPassword }
+  }
+}
+if ($adminLogin.Code -eq 200) {
+  try { $tokenAd = ($adminLogin.Body | ConvertFrom-Json).token } catch { }
+}
+Check "Admin bootstrap: login de $script:AdminEmail" (-not [string]::IsNullOrEmpty($tokenAd)) "$($adminLogin.Code) $($adminLogin.Body)"
+
+if (-not [string]::IsNullOrEmpty($tokenAd)) {
+  $hAd = @{ Authorization = "Bearer $tokenAd" }
+  $isAdmin = $false
+  $aprof = Invoke-Json "GET" "/api/v1/user/profile" $null $hAd
+  if ($aprof.Code -eq 200) {
+    try {
+      $p = $aprof.Body | ConvertFrom-Json
+      $isAdmin = ($p.is_admin -eq $true)
+      $adminUserId = $p.id
+    } catch { }
+  }
+
+  if (-not $isAdmin) {
+    Write-Host "Usuario admin ainda nao promovido - reiniciando backend para aplicar bootstrap..." -ForegroundColor Yellow
+    try {
+      Restart-Backend
+      # Reinicio limpa o rate limit; re-login garante token pos-boot.
+      $adminLogin = Invoke-Json "POST" "/api/v1/auth/login" @{ email = $script:AdminEmail; password = $script:AdminPassword }
+      if ($adminLogin.Code -eq 200) {
+        $tokenAd = ($adminLogin.Body | ConvertFrom-Json).token
+        $hAd = @{ Authorization = "Bearer $tokenAd" }
+        $aprof = Invoke-Json "GET" "/api/v1/user/profile" $null $hAd
+        if ($aprof.Code -eq 200) {
+          try {
+            $p = $aprof.Body | ConvertFrom-Json
+            $isAdmin = ($p.is_admin -eq $true)
+            $adminUserId = $p.id
+          } catch { }
+        }
+      }
+    }
+    catch {
+      Write-Host "ERRO no reinicio: $($_.Exception.Message)" -ForegroundColor Red
+    }
+  }
+
+  Check "Admin bootstrap: is_admin=true apos ADMIN_EMAILS" $isAdmin $aprof.Body
+  $adminReady = $isAdmin
+}
 
 # ---------------------------------------------------------------- 1. Auth
 Write-Step "1. Auth"
@@ -124,10 +272,11 @@ Check "Register email duplicado (409)" $dup.Code -eq 409
 
 $regB = Invoke-Json "POST" "/api/v1/auth/register" @{ name = "Usuario B"; email = $emailB; password = $passA }
 Check "Register usuario B (201)" $regB.Code -eq 201 $regB.Body
-$tokenB = $null
+$tokenB = $null; $userB = $null
 if ($regB.Code -eq 201) {
   $rB = $regB.Body | ConvertFrom-Json
   $tokenB = $rB.token
+  $userB = $rB.user
 }
 
 $loginA = Invoke-Json "POST" "/api/v1/auth/login" @{ email = $emailA; password = $passA }
@@ -240,6 +389,128 @@ if ($channelId) {
     if ($wsB) { Close-Ws $wsB }
   }
 
+  # ------------------------------------------------------------ 3b. voiceGuard (RF03)
+  # Apenas um usuario fala por vez: 2o falante e rejeitado (nao ha relay) e o
+  # disconnect de A libera o canal (releaseVoice) para B transmitir.
+  Write-Step "3b. voiceGuard (RF03 - um falante por vez)"
+  $wgA = $null; $wgA2 = $null; $wgB = $null
+  try {
+    $wgA = New-Ws "$wsBase/ws/audio/?channel=$channelId&token=$([uri]::EscapeDataString($tokenA))"
+    $wgB = New-Ws "$wsBase/ws/audio/?channel=$channelId&token=$([uri]::EscapeDataString($tokenB))"
+    Start-Sleep -Milliseconds 300 # servidor registra a room apos o upgrade
+
+    $wgSample1 = "QUJDAA=="
+    Send-WsText $wgA ('{{"type":"audio","payload":{{"room":"{0}","audio":"{1}","is_ptt":true}}}}' -f $channelId, $wgSample1)
+    $wgRxB = Receive-WsText $wgB
+    $wgStartOk = $false
+    if ($wgRxB) {
+      try {
+        $m = $wgRxB | ConvertFrom-Json
+        $wgStartOk = ($m.type -eq "audio" -and $m.payload.audio -eq $wgSample1 -and $m.payload.is_ptt -eq $true)
+      } catch { }
+    }
+    Check "voiceGuard: B recebe audio de A (A assumiu o canal)" $wgStartOk $wgRxB
+
+    # B tenta falar com A ainda transmitindo -> rejeitado: nada chega em A.
+    $wgSample2 = "QUJCAg=="
+    Send-WsText $wgB ('{{"type":"audio","payload":{{"room":"{0}","audio":"{1}","is_ptt":true}}}}' -f $channelId, $wgSample2)
+    $wgRxA = Receive-WsText $wgA 2000
+    Check "voiceGuard: 2o falante (B) e rejeitado" ($null -eq $wgRxA) "A recebeu: $wgRxA"
+
+    # A desconecta -> releaseVoice libera o canal.
+    Close-Ws $wgA
+    $wgA = $null
+    Start-Sleep -Milliseconds 700
+
+    # Reconecta A apenas como ouvinte; B agora consegue transmitir.
+    $wgA2 = New-Ws "$wsBase/ws/audio/?channel=$channelId&token=$([uri]::EscapeDataString($tokenA))"
+    Start-Sleep -Milliseconds 300
+    $wgSample3 = "QUJDQw=="
+    Send-WsText $wgB ('{{"type":"audio","payload":{{"room":"{0}","audio":"{1}","is_ptt":true}}}}' -f $channelId, $wgSample3)
+    $wgRxA2 = Receive-WsText $wgA2
+    $wgReleaseOk = $false
+    if ($wgRxA2 -and $userB) {
+      try {
+        $m2 = $wgRxA2 | ConvertFrom-Json
+        $wgReleaseOk = ($m2.type -eq "audio" -and $m2.payload.is_ptt -eq $true -and $m2.payload.user_id -eq $userB.id)
+      } catch { }
+    }
+    Check "voiceGuard: apos disconnect de A, B consegue transmitir" $wgReleaseOk $wgRxA2
+  }
+  catch {
+    Check "voiceGuard: fluxo executado sem erro" $false $_.Exception.Message
+  }
+  finally {
+    if ($wgA) { Close-Ws $wgA }
+    if ($wgA2) { Close-Ws $wgA2 }
+    if ($wgB) { Close-Ws $wgB }
+  }
+
+  # ------------------------------------------------------------ 3c. request_replay (RF06)
+  # B recebe 3 chunks (sequencia N), desconecta; A envia 2 a mais (N+1, N+2);
+  # B reconecta e pede replay desde N -> recebe os 2 perdidos + sentinel.
+  Write-Step "3c. request_replay (RF06 - replay pos-reconexao)"
+  $rpA = $null; $rpB = $null; $rpB2 = $null
+  try {
+    $rpA = New-Ws "$wsBase/ws/audio/?channel=$channelId&token=$([uri]::EscapeDataString($tokenA))"
+    $rpB = New-Ws "$wsBase/ws/audio/?channel=$channelId&token=$([uri]::EscapeDataString($tokenB))"
+    Start-Sleep -Milliseconds 300
+
+    $rpChunks = @("QUJDQQ==", "QUJDQg==", "QUJDQw==")
+    foreach ($chunk in $rpChunks) {
+      Send-WsText $rpA ('{{"type":"audio","payload":{{"room":"{0}","audio":"{1}","is_ptt":true}}}}' -f $channelId, $chunk)
+    }
+
+    $rpSeqs = @()
+    $rpLiveOk = $true
+    for ($i = 0; $i -lt 3; $i++) {
+      $rx = Receive-WsText $rpB
+      if (-not $rx) { $rpLiveOk = $false; break }
+      try {
+        $m = $rx | ConvertFrom-Json
+        if ($m.type -ne "audio" -or -not $m.payload.is_ptt -or -not $m.payload.sequence) { $rpLiveOk = $false; break }
+        $rpSeqs += [int64]$m.payload.sequence
+      } catch { $rpLiveOk = $false; break }
+    }
+    Check "RF06: B recebeu 3 chunks ao vivo com sequence" ($rpLiveOk -and $rpSeqs.Count -eq 3) "seqs=$($rpSeqs -join ',')"
+    $rpLastSeq = if ($rpSeqs.Count -gt 0) { $rpSeqs[-1] } else { 0 }
+
+    # B desconecta; A grava 2 chunks "perdidos" no buffer.
+    Close-Ws $rpB
+    $rpB = $null
+    $rpMissed = @("QUJDRA==", "QUJDRAA=")
+    foreach ($chunk in $rpMissed) {
+      Send-WsText $rpA ('{{"type":"audio","payload":{{"room":"{0}","audio":"{1}","is_ptt":true}}}}' -f $channelId, $chunk)
+    }
+
+    # B reconecta (entra na room automaticamente) e pede replay.
+    $rpB2 = New-Ws "$wsBase/ws/audio/?channel=$channelId&token=$([uri]::EscapeDataString($tokenB))"
+    Send-WsText $rpB2 ('{{"type":"request_replay","payload":{{"room":"{0}","since_sequence":{1}}}}}' -f $channelId, $rpLastSeq)
+
+    $rpGot = @()
+    for ($i = 0; $i -lt 3; $i++) {
+      $rx = Receive-WsText $rpB2 8000
+      if (-not $rx) { break }
+      try { $rpGot += ($rx | ConvertFrom-Json) } catch { }
+    }
+
+    $rpReplayed = @($rpGot | Where-Object { $_.payload.is_replayed -eq $true -and $_.payload.is_ptt -eq $true })
+    $rpTerm = @($rpGot | Where-Object { $_.payload.sender -eq "replay" -and $_.payload.is_ptt -eq $false })
+    $rpSeqOk = ($rpReplayed.Count -eq 2 -and
+      [int64]$rpReplayed[0].payload.sequence -eq ($rpLastSeq + 1) -and
+      [int64]$rpReplayed[1].payload.sequence -eq ($rpLastSeq + 2))
+    Check "RF06: replay entregou os 2 chunks perdidos (N+1, N+2)" $rpSeqOk "last=$rpLastSeq got=$($rpGot.Count)"
+    Check "RF06: replay encerrado por sentinel is_ptt=false (sender=replay)" ($rpTerm.Count -eq 1) "got=$($rpGot.Count)"
+  }
+  catch {
+    Check "RF06: fluxo executado sem erro" $false $_.Exception.Message
+  }
+  finally {
+    if ($rpA) { Close-Ws $rpA }
+    if ($rpB) { Close-Ws $rpB }
+    if ($rpB2) { Close-Ws $rpB2 }
+  }
+
   $leaveB = Invoke-Json "POST" "/api/v1/channels/$channelId/leave" $null $hB
   Check "Leave B (200)" $leaveB.Code -eq 200 $leaveB.Body
 
@@ -279,6 +550,74 @@ Write-Step "6. Refresh token"
 $refreshT = ($regA.Body | ConvertFrom-Json).refresh_token
 $ref = Invoke-Json "POST" "/api/v1/auth/refresh" @{ refresh_token = $refreshT }
 Check "Refresh token (200)" $ref.Code -eq 200 $ref.Body
+
+# ---------------------------------------------------------------- 7. Admin (RF09)
+# TC-RF09: metrics, lista sem password_hash, authz (401/403), self-action 403,
+# suspensao invalida login e delete. Usa o token do bloco 0b.
+Write-Step "7. Admin (RF09 - painel administrativo)"
+if (-not $adminReady -or [string]::IsNullOrEmpty($tokenAd)) {
+  Check "Admin: bloqueio executado" $false "bootstrap do admin falhou (ver bloco 0b)"
+}
+else {
+  $hAd = @{ Authorization = "Bearer $tokenAd" }
+
+  # 1. Dashboard com as 6 metricas
+  $stats = Invoke-Json "GET" "/api/v1/admin/stats" $null $hAd
+  $statsOk = $false
+  if ($stats.Code -eq 200) {
+    try {
+      $s = $stats.Body | ConvertFrom-Json
+      $statsOk = ($null -ne $s.users_total -and $null -ne $s.users_active -and
+                  $null -ne $s.channels_total -and $null -ne $s.ws_connections -and
+                  $null -ne $s.live_rooms -and $null -ne $s.transmitting_channels)
+    } catch { }
+  }
+  Check "Admin: GET stats 200 com as 6 metricas" $statsOk $stats.Body
+
+  # 2. Lista de usuarios: sem password_hash, com campos de localizacao
+  $usersL = Invoke-Json "GET" "/api/v1/admin/users" $null $hAd
+  $usersOk = $false
+  if ($usersL.Code -eq 200) {
+    $usersOk = (-not ($usersL.Body -match 'password')) -and
+               ($usersL.Body -match '"last_lat"') -and
+               ($usersL.Body -match '"last_lng"') -and
+               ($usersL.Body -match '"last_location_at"')
+  }
+  Check "Admin: GET users 200 sem password_hash e com last_lat/lng" $usersOk $usersL.Body
+
+  # 3. Authz: sem token -> 401; usuario comum -> 403
+  $statsNoTok = Invoke-Json "GET" "/api/v1/admin/stats"
+  Check "Admin: stats sem token -> 401" $statsNoTok.Code -eq 401 $statsNoTok.Code
+  $statsComum = Invoke-Json "GET" "/api/v1/admin/stats" $null $hB
+  Check "Admin: stats com token comum -> 403" $statsComum.Code -eq 403 $statsComum.Code
+
+  # 4. Self-action bloqueado: admin nao pode nem suspender nem excluir a si
+  $selfPatch = Invoke-Json "PATCH" "/api/v1/admin/users/$adminUserId" @{ is_active = $false } $hAd
+  Check "Admin: PATCH de si mesmo (is_active) -> 403" $selfPatch.Code -eq 403 "$($selfPatch.Code) $($selfPatch.Body)"
+  $selfDel = Invoke-Json "DELETE" "/api/v1/admin/users/$adminUserId" $null $hAd
+  Check "Admin: DELETE de si mesmo -> 403" $selfDel.Code -eq 403 "$($selfDel.Code) $($selfDel.Body)"
+
+  # 5. Suspender B invalida o proximo login (401)
+  if ($userB) {
+    $sus = Invoke-Json "PATCH" "/api/v1/admin/users/$($userB.id)" @{ is_active = $false } $hAd
+    Check "Admin: suspender B -> 200" $sus.Code -eq 200 "$($sus.Code) $($sus.Body)"
+
+    $loginSus = Invoke-Json "POST" "/api/v1/auth/login" @{ email = $emailB; password = $passA }
+    Check "Admin: login de suspenso -> 401" $loginSus.Code -eq 401 "$($loginSus.Code) $($loginSus.Body)"
+
+    # 6. Excluir B e some da lista
+    $delB = Invoke-Json "DELETE" "/api/v1/admin/users/$($userB.id)" $null $hAd
+    Check "Admin: DELETE B -> 200" $delB.Code -eq 200 "$($delB.Code) $($delB.Body)"
+
+    $usersL2 = Invoke-Json "GET" "/api/v1/admin/users" $null $hAd
+    $goneOk = $false
+    if ($usersL2.Code -eq 200) { $goneOk = -not ($usersL2.Body -match [regex]::Escape($userB.id)) }
+    Check "Admin: B nao aparece apos delete" $goneOk $usersL2.Body
+  }
+  else {
+    Check "Admin: usuario B disponivel para suspensao/delete" $false "registro de B falhou"
+  }
+}
 
 # ---------------------------------------------------------------- Resultado
 Write-Step "RESULTADO"

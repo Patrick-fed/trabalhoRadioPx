@@ -152,7 +152,7 @@ RadioPx/
 │   └── pubspec.yaml
 │
 ├── scripts/
-│   └── test-backend.ps1            # E2E REST+WS (28 checks)
+│   └── test-backend.ps1            # E2E REST+WS (46 checks)
 │
 ├── docs/
 │   ├── requisitos.md               # RF/RNF (inclui RNF06)

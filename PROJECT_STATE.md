@@ -87,8 +87,9 @@ de e-mail duplicado no cadastro voltou a funcionar.
   **Resolvido em 27/10/2026**: o relay do WebSocket grava no `AudioBufferService`
   (via adapter DIP) e retransmite `sequence`; o cliente pede `request_replay`
   após reconexão (por usuário, stateless). No frontend, `AudioQueue` virou a
-  fila de recepção com teto de 30s e sentinel (`voice_screen.dart`). Resta
-  validação E2E em campo com 2 clientes. `BufferManager` e
+  fila de recepção com teto de 30s e sentinel (`voice_screen.dart`). E2E no
+  script (`3c. request_replay`) desde 17/11/2026; resta validação em campo com
+  2 aparelhos (C1). `BufferManager` e
   `message_buffer_model.dart` seguem como código morto (decisão registrada).
 
 - **RF09 — Painel administrativo.** ~~Entrega parcial~~ **Implementado em 02/11/2026**:
@@ -96,18 +97,32 @@ de e-mail duplicado no cadastro voltou a funcionar.
   segue válido até expirar (24h; efeito no próximo login), validação em campo do
   painel no navegador e escopo futuro (gestão de canais, kick, auditoria).
 
-- **Codec — divergência de documentação.** O pacote declara `Codec: "opus"`
-  (`backend/internal/voice/websocket.go:44`), mas o áudio trafegado é **PCM16 cru** em base64, sem
-  compressão. Decidir se vira lacuna ou se é aceitável para v1.
+- **RF05 — redirecionamento para canal novo não está ligado na API.**
+  `JoinChannelOrCreate` (`backend/internal/channel/service.go:70`) implementa a
+  criação automática, mas **nenhum handler o chama**: o fluxo real retorna
+  `409 ChannelFull` e o app exibe "Canal está cheio". Critério "usuário
+  excedente redirecionado para novo canal" coberto apenas por teste unitário
+  (`channel/service_test.go`); decidir se liga no fluxo ou reescapa o requisito
+  (registrado em `plano-de-testes-pendencias.md` §6 nº 4, 17/11/2026).
+
+- ~~**Codec — divergência de documentação.**~~ **Resolvido em 17/11/2026
+  (DEC-021)**: v1 declara e trafega PCM16 — backend já usava `Codec: "pcm16"`
+  (`backend/internal/voice/websocket.go:44` desde 18/10) e o default `'opus'`
+  do model Dart (`audio_packet.dart`) foi corrigido para `'pcm16'`. Opus fica
+  para fase de performance (RNF02); banda ~50× maior é limitação conhecida da
+  v1.
 
 - ~~**Distância do canal nunca é serializada.**~~ **Resolvido na `feature-login`**: o modelo
   `Channel` tem campo `distance,omitempty` e `GetNearbyChannels` o popula; o frontend
   (`channel_model.dart`) já faz parse e renderiza (`distanceFormatted`).
 
 - **Testes de integração/E2E.** Backend ganhou `internal/db/pg_integration_test.go` (opt-in via
-  `RADIOPX_TEST_DB=1`; cobre stores PG + migrações contra banco real) e há o script
-  `scripts/test-backend.ps1` (28 checks, exige servidor rodando). Ainda não há teste
-  automatizado do fluxo de áudio ponta-a-ponta no CI.
+  `RADIOPX_TEST_DB=1`; cobre stores PG + migrações + privacidade RNF01 contra banco real) e o script
+  `scripts/test-backend.ps1` foi ampliado em 17/11/2026 para **46 checks** (admin RF09, voiceGuard
+  RF03, replay RF06) — rodadas consecutivas sem 429 (restart no bootstrap zera o rate limit).
+  Testes unitários novos: `voice/service_test.go` (B1), `channel/service_test.go`
+  (JoinChannelOrCreate/concorrência, A4/B2). Ainda não há teste automatizado do fluxo de áudio
+  ponta-a-ponta no CI.
 
 ### Trabalho futuro — fora de escopo v1 (decisão explícita, 13/10/2026)
 
@@ -240,6 +255,48 @@ Estes itens **não** serão implementados na v1 (persistência em PostgreSQL des
 ---
 
 ## Última Alteração
+
+**10/11/2026 - Localização periódica + endereço reverso no painel admin**
+
+**Data**: 10/11/2026
+
+**Descrição**:
+- **Backend**: novo `POST /api/v1/location` (`internal/location/handler.go`,
+  autenticado, validação de range, gravação best-effort em `users.last_*`);
+  rota registrada em `main.go`; `handler_test.go` (6 casos)
+- **Frontend**: `LocationService.reportPosition()` (best-effort, no-op em
+  web) + `core/location_reporter.dart` (timer global 30s com guard e
+  lifecycle) ligado no `MainScreen` (RF04 — atualização a cada 30s)
+- **Painel admin**: popup do mapa com **endereço reverso** (Nominatim pt-BR,
+  lazy ao abrir, cache por coordenadas, fila 1 req/s) — backend Go intocado
+- **Docs**: DEC-020 (revisa alternativa rejeitada da DEC-018), RF04/RF09 em
+  `requisitos.md`, `arquitetura.md`, `AGENTS.md`, `plano-de-testes.md`
+
+**Verificação**: `go build` + `go vet` + `go test ./... -count=1` verdes;
+`flutter analyze` 14 issues (baseline); `flutter test` **62/62** (5 novos de
+`location_reporter_test.dart`); `node --check app.js` OK. **Campo (10/11)**:
+ticks reais de `/location` → banco + `/admin/users`; Nominatim pt-BR com CORS
+ok; Chrome headless (CDP) logou no `/admin`, abriu o popup e resolveu o
+endereço. Pendente só: aparelho Android (GPS + lifecycle) — sem toolchain
+VS/AVD nesta máquina. Detalhes em `CHANGELOG.md`.
+
+---
+
+**10/11/2026 - Documentação: plano de testes**
+
+**Data**: 10/11/2026
+
+**Descrição**:
+- **Novo `docs/plano-de-testes.md`**: estratégia de níveis de teste com
+  comandos/gate de release, matriz RF/RNF → cobertura → lacunas (admin,
+  voiceGuard e replay sem E2E automatizado), ~50 casos com prioridade,
+  checklist de segurança (RNF05) e de campo, recomendações priorizadas e
+  fase futura de carga (RNF02/RNF03, fora da v1)
+
+**Verificação**: sem mudança de código; inventário conferido (75 testes Go,
+57 Flutter, script 28 checks). Detalhes em `CHANGELOG.md`.
+
+---
 
 **02/11/2026 - RF09 v2: cards com detalhes/variação e mapa Leaflet da última posição**
 
@@ -796,9 +853,9 @@ frontend intocado. Detalhes em `CHANGELOG.md`.
 
 ## Última Atualização
 
-**Data**: 02/11/2026
+**Data**: 10/11/2026
 
-**Hora**: 2026-11-02
+**Hora**: 2026-11-10
 
 **Por**: OpenCode (assistente AI)
 

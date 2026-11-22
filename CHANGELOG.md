@@ -4,6 +4,195 @@ Este documento registra todas as alterações significativas do projeto.
 
 ---
 
+## 17/11/2026 - Bloco A/B de testes (E2E admin, voiceGuard, replay) + RNF01/RF05
+
+### Contexto
+
+Auditoria de pendências (`docs/plano-de-testes-pendencias.md`, 12/11): os
+Blocos A (P1/P2) e B estavam intocados — a tabela de resultados estava vazia e
+o gate de release exigia A1–A3 sem P1 em aberto.
+
+### Alterações
+
+**`scripts/test-backend.ps1` (29 → 46 checks)**
+
+- Bloco **0b Admin bootstrap**: login/registro do admin (`RADIOPX_ADMIN_EMAIL`,
+  default `admin@radiopx.test`; senha `RADIOPX_ADMIN_PASSWORD`) + reinício do
+  backend para aplicar `ADMIN_EMAILS` (só promove no boot) e zerar o rate limit
+  de auth (10/min por IP) entre rodadas; flag `ServerStartedByScript` evita
+  restart quando o próprio script acabou de subir o servidor
+- Bloco **3b voiceGuard (RF03)**: A assume o canal → B tenta falar e é
+  rejeitado (sem relay) → A desconecta (`releaseVoice`) → B consegue transmitir
+  (TC-RF03-02/03)
+- Bloco **3c request_replay (RF06)**: B recebe 3 chunks ao vivo com `sequence`,
+  desconecta; A grava 2 a mais; B reconecta e envia `request_replay` → recebe
+  N+1/N+2 com `is_replayed` + sentinel `is_ptt=false` (`sender=replay`)
+  (TC-RF06-02)
+- Bloco **7 Admin (RF09)**: stats com as 6 métricas, lista sem `password_hash`
+  e com `last_lat`/`last_lng`/`last_location_at`, 401 sem token, 403 com token
+  comum, self-PATCH/DELETE → 403, suspensão → login 401, delete → some da
+  lista (TC-RF09-02..06)
+
+**Novos testes Go**
+
+- `channel/service_test.go`: `JoinChannelOrCreate` — canal cheio redireciona o
+  excedente para canal novo (A4/RF05) e 25 joins concorrentes nunca estouram
+  10 usuários/canal (B2)
+- `voice/service_test.go` (novo): voiceGuard — 2º falante recebe
+  `ErrChannelBusy`, só o speaker atual para, release libera o canal,
+  `ActiveChannelsCount` (B1/RF03)
+- `db/privacy_integration_test.go` (novo, opt-in `RADIOPX_TEST_DB=1`): schema
+  contém apenas as 4 tabelas esperadas e nenhuma coluna `bytea`/`oid` ou com
+  nome de áudio (A5/RNF01/TC-RNF01-01)
+
+**Decisão de codec (DEC-021)**
+
+- **Codec PCM16 declarado na v1, Opus adiado** (`docs/decisoes.md` → DEC-021):
+  backend já declarava `Codec: "pcm16"` desde 18/10 (a pendência de 12/11
+  estava desatualizada); default `'opus'` do model Dart `AudioPacket`
+  (`audio_packet.dart`) corrigido para `'pcm16'` (player já usava
+  `Codec.pcm16`); teste `models_test.dart` atualizado. Limitação conhecida:
+  banda ~50× maior que Opus — aceita para v1 (RNF02 como fase futura)
+
+### Pendência registrada (não é falha de teste)
+
+- **RF05 — redirecionamento não ligado na API**: `JoinChannelOrCreate`
+  (`backend/internal/channel/service.go:70`) não é chamado por nenhum handler;
+  o fluxo real retorna `409 ChannelFull` e o app mostra "Canal está cheio".
+  O teste cobre o comportamento pretendido; ligar no fluxo real é decisão
+  pendente (ver `plano-de-testes-pendencias.md` §6 e `PROJECT_STATE.md`).
+  *Obs.: o item do codec (§6 nº 2) foi encerrado pela DEC-021 nesta data.*
+
+### Verificação
+
+- `go build && go vet && go test ./... -count=1` ✅
+- `RADIOPX_TEST_DB=1 go test ./internal/db/... -count=1` ✅
+  (`TestAudioNeverPersisted`)
+- `flutter test` ✅ 62/62 (baseline)
+- `scripts/test-backend.ps1` ✅ 46/46 (2 rodadas seguidas, sem 429)
+
+---
+
+## 10/11/2026 - Localização periódica (POST /location) + endereço reverso no painel admin
+
+### Contexto
+
+O painel admin mostrava apenas a última posição capturada de forma passiva
+(só quando o usuário usava a tela de canais) e o popup exibia lat/lng crus.
+Pedido: acompanhar a posição dos usuários com atualização periódica e exibir
+endereço legível.
+
+### Alterações
+
+**Backend**
+
+- **Novo `internal/location/handler.go`**: `POST /api/v1/location`
+  (autenticado via injector, `X-User-ID`) com `{"latitude","longitude"}`,
+  validação de range (±90/±180 → 400) e gravação best-effort em
+  `users.last_*` (200 `{"ok":true}` mesmo em falha de store — mesmo contrato
+  do `recordLocation`)
+- **`cmd/server/main.go`**: handler instanciado e registrado no mux
+  `protected` + `injector` (rota protegida)
+- **Novo `internal/location/handler_test.go`**: 6 casos (ok, sobrescreve,
+  sem user, corpo inválido, coordenadas fora do range, método)
+
+**Frontend**
+
+- **`location_service.dart`**: novo `reportPosition()` — melhor esforço,
+  engole erros, no-op em web (coords mock)
+- **Novo `core/location_reporter.dart`**: singleton com `Timer.periodic`
+  de 30s (RF04), guard anti-sobreposição, tick imediato no start
+- **`app.dart` (`MainScreen`)**: inicia o reporter no login, para no logout/
+  dispose, pausa em `paused/hidden/detached` e retoma em `resumed`
+  (mesmo padrão de lifecycle do `channels_screen`)
+
+**Painel admin (SPA — backend Go intocado)**
+
+- **`internal/admin/web/app.js`**: reverse geocoding **lazy** via
+  Nominatim/OSM (`display_name`, pt-BR, `zoom=18`) ao abrir o popup do
+  marcador; cache em memória por coordenadas (4 casas ≈ 11m, falhas também
+  cacheadas), fila de 1 req/s (política Nominatim); placeholder
+  "endereço…" → resolução assíncrona ou "endereço indisponível"
+  (só `textContent`, sem injeção de HTML)
+
+**Docs**
+
+- **DEC-020** em `docs/decisoes.md` (revisa alternativa rejeitada da
+  DEC-018; mantém LGPD/sem histórico)
+- `docs/requisitos.md`: RF04 ganha nota de implementação; RF09 ganha
+  critério de endereço legível e menção ao relatório periódico
+- `docs/arquitetura.md`: Location Module, endpoint, árvore frontend e nota
+  de localização atualizados; `AGENTS.md` com o novo endpoint
+- `docs/plano-de-testes.md`: TC-RF04-05..08, TC-RF09-11, matriz e checklist
+  de campo atualizados
+
+### Verificação
+
+- `go build` + `go vet` + `go test ./... -count=1` → verdes (suíte ampliada
+  com os 6 testes novos de `location`)
+- `flutter analyze` → 14 issues (baseline, zero novos) · `flutter test`
+  **57/57**
+- `node --check app.js` → OK
+- Pendente: validação em campo (reporter de 30s no aparelho, popup com
+  endereço no navegador)
+
+### Validação em campo (mesmo dia, 10/11/2026)
+
+Feita nesta máquina (sem aparelho Android — sem toolchain VS/AVD):
+
+- **Localização → admin**: 3 ticks de `POST /api/v1/location` com coordenadas
+  móveis → último vence no banco (`last_lat=-23.5525`) e aparece em
+  `GET /api/v1/admin/users` com `last_location_at` fresco
+- **Validações reais**: lat 91 → 400; sem token → 401; CORS do Nominatim
+  `ACAO=*` (popup no browser funciona)
+- **Nominatim real** (mesma URL do popup): `display_name` pt-BR
+  ("…Rua Santa Teresa…São Paulo…Brasil")
+- **`/admin/app.js` servido** com `reverseGeocode` embutido; `node --check` OK
+- **Chrome headless (CDP) contra `/admin`**: login → dashboard → mapa com
+  marcadores → clique no popup → **endereço resolvido em pt-BR** ("Doca 11 de
+  Junho, Centro, Rio de Janeiro…"), badge/link OSM presentes, sem placeholder
+- **Reporter**: `flutter test` novo `location_reporter_test.dart` (5 casos:
+  tick imediato, start idempotente, stop seguro, guard anti-sobreposição,
+  intervalo = 30s) — suíte **62/62**; `LocationReporter` ganhou
+  `createForTest` com injeção do report (injeção de dependência p/ teste)
+- **Restrição**: o app Android em si (GPS real + lifecycle) segue pendente de
+  aparelho/emulador — nesta máquina `flutter build windows` falha por falta de
+  toolchain Visual Studio
+
+---
+
+## 10/11/2026 - Documentação: plano de testes (docs/plano-de-testes.md)
+
+### Contexto
+
+Pedido de "plano de teste do projeto": o projeto tinha suítes espalhadas
+(`go test`, `flutter test`, `test-backend.ps1`) e lacunas listadas em
+`PROJECT_STATE.md`, mas nenhum documento único de estratégia e cobertura de
+testes.
+
+### Alterações (apenas documentação)
+
+- **Novo `docs/plano-de-testes.md`**:
+  - Estratégia por nível (unitário/integração/E2E/campo/carga) com comandos
+    oficiais e gate de release (§2, §7)
+  - Matriz de rastreabilidade RF01–RF09 / RNF01–RNF06 → cobertura atual →
+    lacunas (§3) — destaque: admin (RF09), voiceGuard e `request_replay`
+    sem E2E automatizado
+  - ~50 casos de teste funcionais e de não-funcionais com prioridade P1–P3
+    (§4), checklist de segurança RNF05 (§5) e checklist de campo pendente (§6)
+  - Recomendações priorizadas de novos testes (§7) e **fase futura de carga**
+    RNF02/RNF03 com cenários e ferramentas sugeridas (§8, fora do escopo v1)
+  - Ambiente/dados de teste (§9) e referências (§10)
+
+### Verificação
+
+Sem mudança de código — `go test`/`flutter test` não alterados. Documento
+revisado contra `docs/requisitos.md`, `PROJECT_STATE.md` (Lacunas, Problemas
+Conhecidos) e inventário real: 75 testes Go (10 arquivos), 57 Flutter
+(8 arquivos), script E2E com 28 checks.
+
+---
+
 ## 02/11/2026 - RF09 v2: cards com detalhes/variação e mapa Leaflet da última posição
 
 ### Contexto

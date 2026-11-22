@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:geolocator/geolocator.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/config.dart';
 import '../models/location_model.dart';
+import '../../auth/services/auth_service.dart';
 
 class LocationService {
   StreamSubscription<Position>? _positionSubscription;
@@ -134,6 +137,35 @@ class LocationService {
     double lat2, double lon2,
   ) {
     return Geolocator.distanceBetween(lat1, lon1, lat2, lon2) / 1000;
+  }
+
+  // Best-effort report of the current position to POST /api/v1/location
+  // (RF04 periodic update, DEC-020). Never throws: failures are swallowed so
+  // the caller's timer keeps running. No-op on web (mock coordinates).
+  Future<void> reportPosition() async {
+    if (kIsWeb) return;
+
+    final location = await getCurrentLocation();
+    if (location == null) return;
+
+    try {
+      final headers = await AuthService().getAuthHeaders();
+      if (headers.isEmpty) return;
+
+      await apiPost(
+        '${AppConfig.apiBaseUrl}/api/v1/location',
+        headers: {
+          'Content-Type': 'application/json',
+          ...headers,
+        },
+        body: jsonEncode({
+          'latitude': location.latitude,
+          'longitude': location.longitude,
+        }),
+      );
+    } catch (_) {
+      // Best-effort: position reporting must never surface errors to the UI.
+    }
   }
 
   void dispose() {

@@ -2,6 +2,7 @@ package channel
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 )
 
@@ -154,5 +155,116 @@ func TestChannelService_MaxVisibleChannels(t *testing.T) {
 
 	if len(channels) > MaxVisibleChannels {
 		t.Errorf("Expected max %d channels, got %d", MaxVisibleChannels, len(channels))
+	}
+}
+
+// A4 / RF05: quando todos os canais proximos estao cheios, o usuario excedente
+// deve ser redirecionado para um canal novo (JoinChannelOrCreate) em vez de
+// falhar, e o canal cheio permanece com exatamente MaxUsersPerChannel membros.
+func TestChannelService_JoinChannelOrCreate_FullRedirectsToNewChannel(t *testing.T) {
+	service := NewChannelService(NewMemoryChannelStore())
+	req := &CreateChannelRequest{
+		Name:      "RF05 Channel",
+		Latitude:  -23.5505,
+		Longitude: -46.6333,
+	}
+
+	first, err := service.CreateChannel("user1", req)
+	if err != nil {
+		t.Fatalf("CreateChannel: %v", err)
+	}
+	for i := 2; i <= MaxUsersPerChannel; i++ {
+		if err := service.JoinChannel(fmt.Sprintf("user%d", i), first.ID); err != nil {
+			t.Fatalf("fill join %d: %v", i, err)
+		}
+	}
+	full, err := service.GetChannel(first.ID)
+	if err != nil || full.UserCount != MaxUsersPerChannel {
+		t.Fatalf("setup: channel should be full, got user_count=%d err=%v", full.UserCount, err)
+	}
+
+	joined, err := service.JoinChannelOrCreate("user11", req)
+	if err != nil {
+		t.Fatalf("JoinChannelOrCreate: %v", err)
+	}
+	if joined.ID == first.ID {
+		t.Error("expected redirect to a new channel, got the full one")
+	}
+
+	after, err := service.GetChannel(first.ID)
+	if err != nil {
+		t.Fatalf("GetChannel(full): %v", err)
+	}
+	if after.UserCount != MaxUsersPerChannel {
+		t.Errorf("full channel must stay at %d members, got %d", MaxUsersPerChannel, after.UserCount)
+	}
+
+	members, err := service.GetChannelUsers(joined.ID)
+	if err != nil {
+		t.Fatalf("GetChannelUsers: %v", err)
+	}
+	found := false
+	for _, m := range members {
+		if m == "user11" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("user11 should be a member of the new channel, members=%v", members)
+	}
+}
+
+// B2 / RF05: joins concorrentes nunca estouram o teto de 10 por canal - ou o
+// candidato aceita, ou ErrChannelFull leva a cria/candidato seguinte.
+func TestChannelService_JoinChannelOrCreate_ConcurrentNeverExceedsMax(t *testing.T) {
+	service := NewChannelService(NewMemoryChannelStore())
+	req := &CreateChannelRequest{
+		Name:      "RF05 Concurrent",
+		Latitude:  -23.5505,
+		Longitude: -46.6333,
+	}
+
+	const users = 25
+	var wg sync.WaitGroup
+	joinedID := make([]string, users)
+	errs := make([]error, users)
+	for i := 0; i < users; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			ch, err := service.JoinChannelOrCreate(fmt.Sprintf("conc-user-%d", i), req)
+			if err == nil && ch != nil {
+				joinedID[i] = ch.ID
+			}
+			errs[i] = err
+		}(i)
+	}
+	wg.Wait()
+
+	seen := make(map[string]bool)
+	for i := 0; i < users; i++ {
+		if errs[i] != nil {
+			t.Errorf("join %d: %v", i, errs[i])
+			continue
+		}
+		if joinedID[i] == "" {
+			t.Errorf("join %d: no channel returned", i)
+			continue
+		}
+		seen[joinedID[i]] = true
+	}
+
+	for id := range seen {
+		ch, err := service.GetChannel(id)
+		if err != nil {
+			t.Errorf("GetChannel(%s): %v", id, err)
+			continue
+		}
+		if ch.UserCount > MaxUsersPerChannel {
+			t.Errorf("channel %s exceeded cap: %d > %d", id, ch.UserCount, MaxUsersPerChannel)
+		}
+	}
+	if len(seen) < 2 {
+		t.Errorf("expected at least 2 channels for %d users (cap %d each), got %d", users, MaxUsersPerChannel, len(seen))
 	}
 }

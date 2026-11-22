@@ -192,6 +192,62 @@
     });
   }
 
+  // ---------- reverse geocoding (Nominatim, lazy, cached — DEC-020) ----------
+
+  const geoCache = new Map(); // "lat,lng" (4dp) -> Promise<string|null>
+  let geoLastCall = 0;
+
+  function geoKey(lat, lng) {
+    return Number(lat).toFixed(4) + "," + Number(lng).toFixed(4);
+  }
+
+  // Resolves lat/lng to a human-readable address (pt-BR). Failures resolve to
+  // null and are cached too, so a broken popup never retries in a loop.
+  // Nominatim usage policy: at most 1 request/second — enforced by a queue.
+  function reverseGeocode(lat, lng) {
+    const key = geoKey(lat, lng);
+    if (geoCache.has(key)) return geoCache.get(key);
+
+    const p = (async function () {
+      const wait = geoLastCall + 1000 - Date.now();
+      if (wait > 0) {
+        await new Promise(function (r) { setTimeout(r, wait); });
+      }
+      geoLastCall = Date.now();
+      try {
+        const url = "https://nominatim.openstreetmap.org/reverse?format=jsonv2" +
+          "&lat=" + encodeURIComponent(lat) +
+          "&lon=" + encodeURIComponent(lng) +
+          "&accept-language=pt-BR&zoom=18";
+        const res = await fetch(url, { headers: { "Accept": "application/json" } });
+        if (!res.ok) return null;
+        const data = await res.json();
+        return (data && data.display_name) ? data.display_name : null;
+      } catch (_) {
+        return null;
+      }
+    })();
+
+    geoCache.set(key, p);
+    return p;
+  }
+
+  // Fills the address line of an open popup once Nominatim answers. Only
+  // touches the element if it is still in the DOM (10s refresh rebinds popups).
+  function fillPopupAddress(m, u) {
+    m.on("popupopen", function () {
+      const popupEl = m.getPopup() && m.getPopup().getElement();
+      if (!popupEl) return;
+      const addrEl = popupEl.querySelector(".popup-addr");
+      if (!addrEl || !addrEl.dataset.pending) return;
+      reverseGeocode(u.last_lat, u.last_lng).then(function (addr) {
+        if (!addrEl.isConnected) return;
+        addrEl.textContent = addr || "endereço indisponível";
+        delete addrEl.dataset.pending;
+      });
+    });
+  }
+
   function popupHTML(u) {
     const name = escapeHTML(u.name || "—");
     const email = escapeHTML(u.email || "—");
@@ -206,6 +262,7 @@
       "<b>" + name + "</b>" +
       email + "<br>" +
       status + " · " + when + "<br>" +
+      '<span class="popup-addr" data-pending="1">endereço…</span><br>' +
       '<a href="' + osm + '" target="_blank" rel="noopener">abrir no OpenStreetMap</a>'
     );
   }
@@ -226,6 +283,7 @@
       const cls = u.is_active ? "map-marker-active" : "map-marker-inactive";
       const icon = L.divIcon({ className: cls, iconSize: [26, 26], iconAnchor: [13, 26], popupAnchor: [0, -24] });
       const m = L.marker([u.last_lat, u.last_lng], { icon: icon }).bindPopup(popupHTML(u));
+      fillPopupAddress(m, u);
       mapLayer.addLayer(m);
       bounds.push([u.last_lat, u.last_lng]);
     });

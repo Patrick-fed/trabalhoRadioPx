@@ -191,7 +191,7 @@ void main() {
         'audio': [1, 2, 3],
         'is_ptt': true,
         'timestamp': '2026-01-01T00:00:00.000Z',
-        'codec': 'opus',
+        'codec': 'pcm16',
       };
 
       final packet = AudioPacket.fromJson(json);
@@ -201,7 +201,7 @@ void main() {
       expect(packet.channelId, 'ch-1');
       expect(packet.audio, [1, 2, 3]);
       expect(packet.isPtt, true);
-      expect(packet.codec, 'opus');
+      expect(packet.codec, 'pcm16');
     });
 
     test('toJson serializes correctly', () {
