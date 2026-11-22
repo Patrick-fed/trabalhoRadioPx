@@ -560,9 +560,11 @@ ganham subtexto (ex.: "92% do total", "2 com posição conhecida") e badge de
    `last_lat`/`last_lng`/`last_location_at` (best-effort, mesmo contrato do
    `recordLocation`), sem histórico.
 2. **Reverse geocoding no painel via SPA**: ao abrir um popup do mapa, o
-   `app.js` consulta o **Nominatim/OSM** (`display_name`, pt-BR) de forma
+   painel consulta o **Nominatim/OSM** (`display_name`, pt-BR) de forma
    lazy, com cache em memória por coordenadas (4 casas ≈ 11m) e fila de
-   1 req/s (política Nominatim). Backend Go não faz chamada externa.
+   1 req/s (política Nominatim). Implementado no `app.js` e portado para
+   `admin-ui/src/utils/geocode.js` + `AdminMap.vue` na migração Vue
+   (DEC-022, 22/11). Backend Go não faz chamada externa.
 
 **Motivo**:
 - A captura passiva da DEC-018 só atualizava quando o usuário usava a tela de

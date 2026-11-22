@@ -4,6 +4,46 @@ Este documento registra todas as alterações significativas do projeto.
 
 ---
 
+## 22/11/2026 - Geocoding reverso portado para a SPA Vue (DEC-020/DEC-022)
+
+### Contexto
+
+O merge da migração Vue (DEC-022) removeu o `app.js` vanilla, onde vivia o
+reverse geocoding do popup (DEC-020). Sem o port, o popup perdia o endereço
+legível exigido pelo RF09.
+
+### Alterações
+
+**`admin-ui/`**
+
+- Novo `src/utils/geocode.js`: `reverseGeocode(lat, lng)` — Nominatim/OSM
+  (`display_name`, pt-BR, `zoom=18`), lazy no open do popup, cache em memória
+  por coordenada (4 casas ≈ 11m, falhas também cacheadas) e fila de 1 req/s
+  (política Nominatim); popups nunca rejeitam (null → "endereço indisponível")
+- `src/components/AdminMap.vue`: linha `.popup-addr` no HTML do popup com
+  placeholder "endereço…" e listener `popupopen` que resolve e preenche o
+  endereço só se o elemento ainda estiver no DOM (o refresh de 10s recria
+  os marcadores e os popups)
+
+**Build/docs**
+
+- Bundle regenerado em `backend/internal/admin/web/` (`index-BSoejOV-.js`)
+- DEC-020 atualizada para apontar `geocode.js`/`AdminMap.vue`; árvore do
+  `admin-ui/` em `docs/arquitetura.md`
+
+### Verificação
+
+- `npm test`: **45/45** em 12 arquivos (6 novos: 5 unitários de `geocode.js`
+  + 1 do popup no `AdminMap` cobrindo sucesso e falha)
+- `npm run build`: OK; `go build ./cmd/server` e `go test ./...`: OK
+
+### Motivo
+
+Preservar o critério de aceitação do RF09 ("popup mostra endereço legível")
+após a migração Vue, sem tocar no backend (DEC-020 mantida).
+
+---
+
 ## 21/11/2026 - RF09: migração do painel admin de SPA vanilla para Vue 3
 
 ### Contexto

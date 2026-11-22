@@ -13,6 +13,31 @@ const leaflet = vi.hoisted(() => {
     invalidateSize: vi.fn(),
     remove: vi.fn(),
   }
+  function makeMarker() {
+    const handlers = {}
+    let html = ''
+    const popupDiv = document.createElement('div')
+    return {
+      bindPopup(value) {
+        html = value
+        return this
+      },
+      on(event, fn) {
+        handlers[event] = fn
+        return this
+      },
+      getPopup() {
+        return { getElement: () => popupDiv }
+      },
+      // Simula a abertura do popup no DOM real (Leaflet injeta o HTML lá).
+      openPopup() {
+        document.body.appendChild(popupDiv)
+        popupDiv.innerHTML = html
+        if (handlers.popupopen) handlers.popupopen()
+      },
+      popupEl: popupDiv,
+    }
+  }
   return {
     map: vi.fn(() => mapInstance),
     tileLayer: vi.fn(() => ({ addTo: vi.fn() })),
@@ -21,7 +46,7 @@ const leaflet = vi.hoisted(() => {
       addTo: vi.fn().mockReturnValue(layerGroup),
     })),
     divIcon: vi.fn(() => ({})),
-    marker: vi.fn(() => ({ bindPopup: vi.fn().mockReturnThis() })),
+    marker: vi.fn(() => makeMarker()),
     Icon: { Default: { mergeOptions: vi.fn() } },
     __map: mapInstance,
     __layer: layerGroup,
@@ -90,5 +115,49 @@ describe('AdminMap', () => {
 
     wrapper.vm.invalidate()
     expect(leaflet.__map.invalidateSize).toHaveBeenCalled()
+  })
+
+  it('preenche o endereço do popup no open: Nominatim ok e falha', async () => {
+    vi.useFakeTimers()
+    const fetchMock = vi.fn().mockImplementation((url) => {
+      if (String(url).includes('lat=-23.5505')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ display_name: 'Avenida Paulista, São Paulo' }),
+        })
+      }
+      return Promise.reject(new Error('offline'))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    try {
+      const pinia = createPinia()
+      setActivePinia(pinia)
+      const store = useAdminStore()
+      store.users = [user('a'), user('b', -23.6, -46.7)]
+
+      mount(AdminMap, { global: { plugins: [pinia] } })
+      await vi.advanceTimersByTimeAsync(0)
+
+      const okMarker = leaflet.marker.mock.results[0].value
+      okMarker.openPopup()
+      await vi.advanceTimersByTimeAsync(1000)
+
+      const okAddr = okMarker.popupEl.querySelector('.popup-addr')
+      expect(okAddr.textContent).toBe('Avenida Paulista, São Paulo')
+      expect(okAddr.dataset.pending).toBeUndefined()
+
+      const failMarker = leaflet.marker.mock.results[1].value
+      failMarker.openPopup()
+      await vi.advanceTimersByTimeAsync(1000)
+
+      const failAddr = failMarker.popupEl.querySelector('.popup-addr')
+      expect(failAddr.textContent).toBe('endereço indisponível')
+      expect(failAddr.dataset.pending).toBeUndefined()
+    } finally {
+      vi.unstubAllGlobals()
+      vi.useRealTimers()
+      document.body.innerHTML = ''
+    }
   })
 })

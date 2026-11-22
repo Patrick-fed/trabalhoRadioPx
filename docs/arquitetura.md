@@ -315,7 +315,7 @@ admin-ui/
 │   ├── router/index.js             # login (/login) e casca autenticada (/)
 │   ├── services/                   # api.js (fetch/401/429) + adminApi.js
 │   ├── stores/admin.js             # sessão em memória, refresh, ações e timer 10s
-│   ├── utils/                      # formatação pt-BR e escape de HTML
+│   ├── utils/                      # formatação pt-BR, escape de HTML e geocoding (Nominatim)
 │   └── views/                      # LoginView e AdminShell
 └── tests/                          # Vitest: unit e components
 ```

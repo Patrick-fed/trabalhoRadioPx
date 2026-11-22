@@ -4,6 +4,7 @@ import L from 'leaflet'
 import { useAdminStore } from '../stores/admin'
 import { escapeHtml } from '../utils/escapeHtml'
 import { formatCoord, formatWhen, osmUrl } from '../utils/format'
+import { reverseGeocode } from '../utils/geocode'
 
 const store = useAdminStore()
 const mapEl = ref(null)
@@ -27,8 +28,26 @@ function popupHtml(user) {
     `<b>${name}</b>` +
     `${email}<br>` +
     `${status} · ${when}<br>` +
+    '<span class="popup-addr" data-pending="1">endereço…</span><br>' +
     `<a href="${url}" target="_blank" rel="noopener">abrir no OpenStreetMap</a>`
   )
+}
+
+// Preenche a linha de endereço do popup assim que o Nominatim responde.
+// Só toca no elemento se ele ainda estiver no DOM (o refresh de 10s recria
+// os marcadores e os popups).
+function fillPopupAddress(marker, user) {
+  marker.on('popupopen', () => {
+    const popupEl = marker.getPopup()?.getElement()
+    if (!popupEl) return
+    const addrEl = popupEl.querySelector('.popup-addr')
+    if (!addrEl || !addrEl.dataset.pending) return
+    reverseGeocode(user.lastLat, user.lastLng).then((addr) => {
+      if (!addrEl.isConnected) return
+      addrEl.textContent = addr || 'endereço indisponível'
+      delete addrEl.dataset.pending
+    })
+  })
 }
 
 function initMap() {
@@ -63,6 +82,7 @@ function renderMarkers() {
       popupAnchor: [0, -24],
     })
     const marker = L.marker([user.lastLat, user.lastLng], { icon }).bindPopup(popupHtml(user))
+    fillPopupAddress(marker, user)
     layer.addLayer(marker)
     bounds.push([user.lastLat, user.lastLng])
   })

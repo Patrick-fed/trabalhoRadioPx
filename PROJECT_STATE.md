@@ -266,6 +266,24 @@ Estes itens **não** serão implementados na v1 (persistência em PostgreSQL des
 
 ## Última Alteração
 
+**22/11/2026 - Geocoding reverso do popup portado para a SPA Vue**
+
+**Data**: 22/11/2026
+
+**Descrição**:
+- **`admin-ui/src/utils/geocode.js`** (novo): `reverseGeocode` Nominatim
+  pt-BR com cache por coordenada e fila 1 req/s (DEC-020), extraído do
+  `app.js` removido na migração Vue
+- **`AdminMap.vue`**: placeholder "endereço…" no popup + resolução no
+  `popupopen` (só preenche se o elemento seguir no DOM)
+- Bundle `backend/internal/admin/web/` regenerado; DEC-020 aponta os
+  novos arquivos
+
+**Verificação**: `npm test` **45/45** (6 novos); `npm run build`, `go build`
+e `go test ./...` verdes. Detalhes em `CHANGELOG.md`.
+
+---
+
 **21/11/2026 - RF09: painel admin migrado para Vue 3**
 
 **Data**: 21/11/2026
@@ -895,9 +913,9 @@ frontend intocado. Detalhes em `CHANGELOG.md`.
 
 ## Última Atualização
 
-**Data**: 21/11/2026
+**Data**: 22/11/2026
 
-**Hora**: 2026-11-21
+**Hora**: 2026-11-22
 
 **Por**: OpenCode (assistente AI)
 
