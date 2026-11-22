@@ -195,6 +195,29 @@ Sempre que uma nova dependência for adicionada, removida ou substituída, regis
 
 Atualize o histórico de alterações do projeto quando a mudança for relevante.
 
+### 22/11/2026 — `bluetooth_manager` 2.0.1 (RF10)
+
+* **Nome/versão**: `bluetooth_manager: 2.0.1`, fixada sem intervalo.
+* **Finalidade**: consultar e observar o estado do adaptador Bluetooth no Android
+  para o indicador de proximidade simulada.
+* **Motivo**: RF10 exibe "Alguém por perto"/"Ninguém por perto" a partir do
+  estado local; a API usada é somente `getBluetoothState()` e
+  `getBluetoothStateStream()`.
+* **Alternativas consideradas**: implementação própria de MethodChannel/e EventChannel
+  (mais código nativo e maior risco de permissões); `BLUETOOTH_CONNECT`,
+  `BLUETOOTH_SCAN` ou `BLUETOOTH_ADMIN` (fora do escopo RNF07); versão 2.0.0
+  (commit anterior `7085991` sem o contrato 2.0.1 auditado).
+* **Impacto**: uma dependência direta no Flutter; nenhuma alteração em backend,
+  banco, WebSocket ou áudio. Permissões adversas são removidas no merge do
+  manifesto; estados ficam só em memória.
+* **Segurança**: auditoria do commit `9ad0adfe366cb3c907a49d2ca5c1d688158ba6ee`
+  confirmou ausência de chamadas de permissão runtime, scan, advertise,
+  descoberta, pareamento, conexão BLE, áudio ou persistência no código Dart do
+  plugin. `permission_handler: ^12.0.0` aparece apenas como dependência
+  transitiva sem uso na API adotada. Nenhuma advisory relevante foi encontrada
+  na versão fixada; versão publicada em 29/05/2026.
+* **Data**: 22/11/2026.
+
 ---
 
 ## 12. Comandos de instalação

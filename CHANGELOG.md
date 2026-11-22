@@ -4,6 +4,65 @@ Este documento registra todas as alterações significativas do projeto.
 
 ---
 
+## 22/11/2026 - RF10: simulação de proximidade via Bluetooth
+
+### Contexto
+
+Spec `specs/004-bluetooth-proximity-simulation/` aprovada para exibir um
+indicador local baseado apenas no estado do adaptador Bluetooth do Android, sem
+descoberta, conexão, persistência, envio de dados ou alteração da comunicação por
+Wi-Fi/WebSocket.
+
+### Alterações
+
+**Frontend Flutter**
+
+- `bluetooth_manager: 2.0.1` pinado em `frontend/pubspec.yaml`
+- Novo módulo `frontend/lib/features/bluetooth/` com enum de estados, contrato
+  `BluetoothStateProvider`, factory com import condicional Android/stub,
+  `PluginBluetoothStateProvider`, `BluetoothProximityController` e
+  `BluetoothProximityIndicator`
+- `frontend/lib/app.dart`: indicador acima das abas Canais/Falar/Perfil na área
+  autenticada, com provider injetável para testes
+- `frontend/android/app/src/main/AndroidManifest.xml`: `BLUETOOTH` até API 30 e
+  remoção via merge de `BLUETOOTH_ADMIN`, `BLUETOOTH_SCAN`,
+  `BLUETOOTH_ADVERTISE` e `BLUETOOTH_CONNECT`
+- Testes: `frontend/test/bluetooth_proximity_controller_test.dart`,
+  `frontend/test/bluetooth_proximity_indicator_test.dart` e
+  `frontend/test/bluetooth_isolation_test.dart`
+
+**Spec e documentação**
+
+- Plan/research/data-model/contracts/quickstart da spec 004 preenchidos após
+  auditoria do plugin 2.0.1 e das permissões Android
+- DEC-021 registrada; `docs/requisitos.md`, `docs/arquitetura.md`,
+  `PROJECT_STATE.md` e `CHANGELOG.md` atualizados
+
+### Verificação
+
+- `dart format` nos arquivos Dart alterados: OK
+- `git diff --check`: OK
+- API do plugin 2.0.1 conferida no commit auditado (`9ad0adf`): `on`, `off`,
+  `uknow` e construtor padrão de `BluetoothManager` confirmados
+- `flutter pub get`: OK; `bluetooth_manager 2.0.1` resolvido
+- `flutter analyze`: sem erros; 13 infos pré-existentes fora da feature
+- `flutter test`: 66/66 testes passaram
+- `flutter build apk --debug`: OK; APK em
+  `frontend/build/app/outputs/flutter-apk/app-debug.apk`
+- Manifesto mesclado inspecionado: `BLUETOOTH` com `maxSdkVersion="30"`;
+  ausentes `BLUETOOTH_ADMIN`, `BLUETOOTH_SCAN`, `BLUETOOTH_ADVERTISE` e
+  `BLUETOOTH_CONNECT`; presentes INTERNET, RECORD_AUDIO,
+  ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION e MODIFY_AUDIO_SETTINGS
+- Validação manual em dispositivo Android ainda pendente
+
+### Motivo
+
+Cumprir RF10/RNF07 com o menor conjunto de permissões possível e rastreabilidade
+técnica de cada permissão adotada, preservando privacidade, áudio, canais e
+painel administrativo.
+
+---
+
 ## 21/11/2026 - RF09: migração do painel admin de SPA vanilla para Vue 3
 
 ### Contexto

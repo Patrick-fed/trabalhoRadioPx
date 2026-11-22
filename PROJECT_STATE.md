@@ -6,7 +6,18 @@ Este documento registra o estado atual do projeto para facilitar a continuidade 
 
 ## Fase
 
-**Desenvolvimento - Protótipo Funcional + APK Android (02/11/2026 - RF09 v2: mapa Leaflet + cards de detalhe)**
+**Desenvolvimento - Protótipo Funcional + APK Android (22/11/2026 - RF10: simulação de proximidade via Bluetooth)**
+
+Em 22/11/2026 o app Flutter ganhou um indicador local de proximidade simulada
+(spec `specs/004-bluetooth-proximity-simulation/`, DEC-021): Bluetooth ligado
+mostra "Alguém por perto", desligado mostra "Ninguém por perto" e falha/estado
+desconhecido mostra "Indisponível". O indicador fica acima das abas
+Canais/Falar/Perfil, usa `bluetooth_manager 2.0.1` somente no Android e não
+persiste nem envia estado ao backend. `dart format` e `git diff --check`
+passaram; `flutter pub get`, `flutter analyze` (sem erros), `flutter test`
+(66/66) e `flutter build apk --debug` passaram, e o manifesto mesclado foi
+inspecionado com as permissões mínimas esperadas. Falta apenas validação manual
+em dispositivo Android. Ver [CHANGELOG](CHANGELOG.md) de 22/11/2026.
 
 Em 02/11/2026 o dashboard do painel admin ganhou **mapa embutido (Leaflet
 1.9.4 vendorado)** com a última posição de cada usuário (popup com
@@ -82,7 +93,7 @@ de e-mail duplicado no cadastro voltou a funcionar.
 
 ## Lacunas / Aderência aos Requisitos
 
-> **Fonte única de verdade** para o que ainda falta. Atualizado em 02/11/2026 (RF09).
+> **Fonte única de verdade** para o que ainda falta. Atualizado em 22/11/2026 (RF10).
 > As seções de requisitos/progresso deste documento são anteriores a esta auditoria.
 
 ### Lacunas dentro do escopo v1 (a corrigir)
@@ -105,6 +116,12 @@ de e-mail duplicado no cadastro voltou a funcionar.
   APIs + SPA `/admin` + localização passiva. Pendências aceitas: token de suspenso
   segue válido até expirar (24h; efeito no próximo login), validação em campo do
   painel no navegador e escopo futuro (gestão de canais, kick, auditoria).
+
+- ~~**RF10 — Indicador de proximidade Bluetooth.**~~ **Implementado em 22/11/2026**:
+  provider Android com `bluetooth_manager 2.0.1`, stub para outras plataformas,
+  controller em memória e indicador global; sem permissões de scan/anúncio/conexão
+  e sem envio de estado. Validação automatizada concluída (analyze, testes,
+  build e manifesto mesclado); resta validação manual em dispositivo Android.
 
 - **Codec — divergência de documentação.** O pacote declara `Codec: "opus"`
   (`backend/internal/voice/websocket.go:44`), mas o áudio trafegado é **PCM16 cru** em base64, sem
@@ -168,6 +185,7 @@ Estes itens **não** serão implementados na v1 (persistência em PostgreSQL des
 - ✅ RF07 - Gestão de Perfil (Definido)
 - ✅ RF08 - Fila de Áudio (Definido)
 - ✅ RF09 - Painel Administrativo (adicionado em 02/11/2026, implementado)
+- ✅ RF10 - Simulação de Proximidade via Bluetooth (adicionado em 21/11/2026, implementado em 22/11/2026)
 
 ### Requisitos Não Funcionais
 
@@ -177,6 +195,7 @@ Estes itens **não** serão implementados na v1 (persistência em PostgreSQL des
 - ✅ RNF04 - Resiliência (Definido)
 - ✅ RNF05 - Segurança (Definido)
 - ✅ RNF06 - Configurabilidade do servidor (adicionado em 27/10/2026, Fase 3)
+- ✅ RNF07 - Minimização de Permissões e Isolamento da Simulação Bluetooth (adicionado em 21/11/2026, implementado em 22/11/2026)
 
 ---
 
