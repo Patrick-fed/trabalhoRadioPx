@@ -1,60 +1,65 @@
-# Research: Simulação de Proximidade via Bluetooth
+# Research: Detecção de Presença RadioPX via Bluetooth BLE
 
-## 1. Versão exata do plugin
+## 0. Revisão de escopo (24/11/2026)
 
-- `bluetooth_manager 2.0.1`, publicado em `2026-05-29T14:03:36.382881Z`.
-- Commit exato identificado: `9ad0adfe366cb3c907a49d2ca5c1d688158ba6ee` (`fix gradle namespace`).
-- O commit `70859913b882b62d969848ccd5f9c8abbd785406` contém `2.0.0` e não é a versão publicada; foi usado apenas como verificação cruzada.
-- Tags `2.0.1` no repositório retornam 404; a versão foi confirmada pelo `pubspec.yaml` no commit exato e pela API do pub.dev.
-- `pubspec.yaml` 2.0.1: `sdk >=3.3.0 <4.0.0`, `flutter >=3.19.0`, `permission_handler: ^12.0.0`.
-- `permission_handler` é dependência transitiva, mas nenhum arquivo Dart 2.0.1 importa ou chama `permission_handler`.
+**Decision**: substituir detecção BLE genérica por **presença RadioPX↔RadioPX** com **advertise + scan simultâneos** em foreground autenticado. Identidade do anúncio usa Service UUID fixo do protocolo RadioPX + identificador efêmero aleatório em memória, sem associação com usuário/conta/dispositivo. Android 11 ou inferior: best-effort com limitações documentadas.
 
-## 2. Caminho de código usado pela feature
+**Rationale**: o usuário aprovou que apenas outro RadioPX aberto conta como presença. Isso elimina falsos positivos de BLE genérico e exige prova de viabilidade de advertise+scan na mesma sessão.
 
-Dart:
+## 1. Spike de viabilidade (T001-T005)
 
-- `lib/bluetooth_manager.dart` → delega para `BluetoothManagerPath`.
-- `lib/path/conf.dart` → `Platform.isAndroid` seleciona `BluetoothManagerAndroid`; plataformas não suportadas lançam erro.
-- `lib/path/android/bluetooth_manager_android.dart`:
-  - `MethodChannel('bluetooth_manager')` → `getBluetoothState`.
-  - `EventChannel('bluetooth_manager/events')` → `receiveBroadcastStream()`.
-  - resultado desconhecido/erro → `BluetoothState.uknow`.
-- `lib/models/bluetooth_models.dart` → `BluetoothState { on, off, uknow }`.
+**Status**: parcial, sem hardware físico.
 
-Android (commit exato):
+| Item | Resultado |
+|---|---|
+| Workspace | `C:\Users\User\AppData\Local\Temp\opencode\radiopx_ble_spike` criado fora do repo |
+| Candidato inicial | `flutter_bluetooth_plugin 4.0.0` (MIT, `yuanzhihong1/flutter_bluetooth_plugin`) |
+| API | `startAdvertising`, `startScan(serviceUuids)`, `scanEvents`, `advertisingStateChanges`, `isPeripheralModeSupported`, `requestPermissions`, `getAdapterState` |
+| POC | `lib/main.dart`: UUID fixo `0000c0de-0000-1000-8000-00805f9b34fb`, ID efêmero 8 bytes em memória, filtro por UUID, janela 15s, logs/timestamps, sem GATT/connect |
+| `flutter analyze lib/main.dart` | **PASS** |
+| `flutter build apk --debug` | **PASS** (`build/app/outputs/flutter-apk/app-debug.apk`) |
+| Manifesto mesclado | contém `BLUETOOTH_SCAN neverForLocation`, `BLUETOOTH_CONNECT`, `BLUETOOTH_ADVERTISE`, legadas maxSdk30, `bluetooth/bluetooth_le required=false` |
+| Dependências transitivas (pub deps) | `flutter_bluetooth_plugin`, `plugin_platform_interface`, `flutter_web_plugins`, `web`; SDK Flutter/Dart padrão |
+| Licença | MIT (`LICENSE` no pacote) |
+| Hardware 2 Androids | **BLOCKED** - `adb devices -l` vazio; sem comprovação física advertise+scan simultâneo |
 
-- `BluetoothManagerPlugin.java` (212 linhas) implementa `FlutterPlugin`, `MethodCallHandler`, `EventChannel.StreamHandler`.
-- `getBluetoothState()`: exige API ≥ 19, chama `BluetoothAdapter.getDefaultAdapter()` e `adapter.isEnabled()`; sem adaptador ou exceção retorna `uknow`.
-- `onListen()`: envia estado inicial via `events.success(getBluetoothState())` e registra `BroadcastReceiver` para `BluetoothAdapter.ACTION_STATE_CHANGED`.
-- `onCancel()`: remove o receiver.
-- Não há `checkSelfPermission`, `requestPermissions`, `ActivityCompat`, `ContextCompat`, `BLUETOOTH_*` em lógica de permissão, scan, advertise, discovery, pairing, conexão, áudio ou persistência.
-- `enableBluetooth()`/`disableBluetooth()` existem no plugin, mas a feature não deve chamá-los.
+**Risco conhecido**: plugin não tem publisher verificado no pub.dev; changelog ativo até 4.0.0 (2026-11-03). Necessária validação em 2 aparelhos antes de adoção definitiva em produção.
 
-## 3. Fundamentação Android para permissões mínimas
+## 2. Decisão de dependência (provisória, pendente T005)
 
-- Documentação oficial `bt-permissions` (target Android 12+):
-  - `BLUETOOTH_SCAN`: apenas para procurar dispositivos Bluetooth.
-  - `BLUETOOTH_ADVERTISE`: apenas para tornar o dispositivo detectável.
-  - `BLUETOOTH_CONNECT`: apenas para comunicar com dispositivos já pareados.
-  - permissões legados devem usar `android:maxSdkVersion="30"`.
-- Referência oficial `BluetoothAdapter`:
-  - `isEnabled()`: para apps com target R ou inferior exige `BLUETOOTH`; nenhuma exigência adicional em S+.
-  - `ACTION_STATE_CHANGED`: para apps com target R ou inferior exige `BLUETOOTH`; nenhuma exigência adicional em S+.
-  - `ACTION_CONNECTION_STATE_CHANGED`, `ACTION_DISCOVERY_*`, `ACTION_REQUEST_ENABLE` etc. são diferentes e têm exigências próprias; nenhum é usado.
-- AOSP Android 14 `BluetoothAdapter.java`:
-  - `getDefaultAdapter()`: `@RequiresNoPermission`.
-  - `getState()`: `@RequiresLegacyBluetoothPermission` + `@RequiresNoPermission`.
-  - `isEnabled()`: `@RequiresLegacyBluetoothPermission` + `@RequiresNoPermission`.
-  - `ACTION_STATE_CHANGED`: `@RequiresLegacyBluetoothPermission`.
-- AOSP Android 14 `core/res/AndroidManifest.xml`:
-  - `android.bluetooth.adapter.action.STATE_CHANGED` é `<protected-broadcast>`, portanto receiver registrado em runtime recebe apenas broadcast do sistema e se enquadra na exceção de flags `RECEIVER_EXPORTED`/`RECEIVER_NOT_EXPORTED` do Android 14.
-- Decisão: manter apenas `BLUETOOTH` com `maxSdkVersion="30"`; remover do manifesto mesclado `BLUETOOTH_ADMIN`, `BLUETOOTH_SCAN`, `BLUETOOTH_ADVERTISE` e `BLUETOOTH_CONNECT`.
-- `ACCESS_FINE_LOCATION`/`ACCESS_COARSE_LOCATION` já existem para geolocalização RF04 e não são removidas; não são permissões adotadas por RF10.
-- Manifestos de teste devem ser validados no merge final com `flutter build apk --debug`.
+**Decision**: adotar provisoriamente `flutter_bluetooth_plugin: 4.0.0` para spike/design; confirmar após validação em dois Androids físicos.
 
-## 4. Alternativas rejeitadas
+**Rationale**: única dependência avaliada até aqui que cobre advertise+scan/permissões/adapter state na mesma API; licença MIT; manifesto compatível com least privilege; build/analyze passaram. `flutter_reactive_ble` 5.6.0 (decisão anterior) cobre scan, mas não advertise.
 
-- Custom MethodChannel nativo: exigiria código Java próprio e manutenção de receiver; plugin pré-selecionado já cobre exatamente a leitura/stream.
-- `permission_handler`: não é necessário; o plugin não solicita runtime permission e a feature não deve pedir Nearby Devices.
-- Chamar `enableBluetooth()`/`disableBluetooth()`: viola RF007 e altera configuração do usuário.
-- Usar `getProfileConnectionState()` ou `getBondedDevices()`: exigiria `BLUETOOTH_CONNECT` e sairia do escopo.
+**Alternatives considered**:
+- `flutter_reactive_ble` + `flutter_ble_peripheral`: split de responsabilidades, mas duas deps BLE, maior superfície e coordenação.
+- `flutter_blue_plus`: licença comercial/restrições de uso comercial - evitar.
+- MethodChannel/Kotlin próprio: controle total, maior custo e risco de manutenção.
+- `bluetooth_manager` 2.0.1 (legado): só estado do adaptador, sem scan/advertise.
+
+## 3. Permissões e plataforma
+
+**Decision**: Android 12+ requer `BLUETOOTH_SCAN` (`neverForLocation`), `BLUETOOTH_CONNECT`, `BLUETOOTH_ADVERTISE`; Android <=11 usa permissões legadas/location conforme exigência do sistema. Solicitar runtime antes de iniciar advertise/scan. Não solicitar ativação automática do Bluetooth.
+
+**Rationale**: advertise+scan simultâneos exigem `BLUETOOTH_ADVERTISE` além de scan/connect. `neverForLocation` preserva privacidade por não derivar localização.
+
+**Android 11- best-effort**: scan/advertise podem depender de estado do sistema/localização; documentar como limitação operacional, não promessa de paridade.
+
+## 4. Protocolo de presença RadioPX
+
+**Decision**: anunciar e filtrar por Service UUID fixo RadioPX. Carregar apenas identificador efêmero aleatório gerado em memória por sessão/instância ativa. Não incluir userId, deviceId estável, MAC, nome pessoal, localização, áudio ou payload persistente.
+
+**Rationale**: atende privacidade aprovada e evita contagem de BLE genérico. Observação expira em 15s sem anúncios compatíveis.
+
+## 5. Lifecycle
+
+**Decision**: iniciar advertise+scan apenas com usuário autenticado e app em primeiro plano. Em background, saída da área autenticada, fechamento da tela responsável ou fim da sessão, parar advertise+scan e limpar mapa de observações em memória.
+
+**Rationale**: reduz superfície de privacidade, bateria e exposição fora do contexto de uso aprovado.
+
+## 6. Fontes
+
+- Android Developers — Bluetooth permissions / BLE advertise & scan.
+- pub.dev / GitHub — `flutter_bluetooth_plugin` 4.0.0 (MIT, API e changelog).
+- pub.dev — `flutter_reactive_ble` 5.6.0 (scan-only para este requisito).
+- Código local do spike em `C:\Users\User\AppData\Local\Temp\opencode\radiopx_ble_spike`.

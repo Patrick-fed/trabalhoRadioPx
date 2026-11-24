@@ -1,45 +1,50 @@
-# Data Model: Simulação de Proximidade via Bluetooth
+# Data Model: Detecção de Presença RadioPX via Bluetooth (BLE)
 
-## BluetoothProximityState
+## RadioPxPresenceState
 
-Enum interno do app, sem persistência e sem vínculo com o backend:
+Enum interno, sem persistência/backend:
 
-| Valor | Texto exato | Origem |
+| Valor | Texto UI | Condição |
 |---|---|---|
-| `nearby` | `Alguém por perto` | `BluetoothState.on` / `isEnabled() == true` |
-| `away` | `Ninguém por perto` | `BluetoothState.off` / `isEnabled() == false` |
-| `unavailable` | `Indisponível` | `BluetoothState.uknow`, adapters nulos, erro de plataforma, plataformas fora do Android |
+| `nearby` | `Alguém por perto` | >=1 observação RadioPX compatível com `lastSeenAt` nos últimos 15s |
+| `away` | `Ninguém por perto` | pré-condições OK, advertise+scan ativos, sem observação compatível recente |
+| `unavailable` | `Indisponível` | BT off, permissão negada, hardware/adapter indisponível, falha, plataforma não Android, ou app fora de foreground autenticado |
 
-## BluetoothStateProvider
+## RadioPxAdvertisement (local)
 
-Contrato injetável com duas operações:
+| Campo | Tipo | Regra |
+|---|---|---|
+| `serviceUuid` | `String` | UUID fixo do protocolo RadioPX |
+| `instanceId` | `String` | efêmero, aleatório, gerado em memória; não associa a usuário/conta/dispositivo |
+| `startedAt` | `DateTime` | somente memória |
 
-- `Future<BluetoothProximityState> readState()` — retorna sempre um dos três estados; nunca lança para a UI.
-- `Stream<BluetoothProximityState> watchState()` — emite estados mapeados; erros de stream são convertidos em `unavailable` pelo controller.
+## NearbyRadioPxObservation (remota)
 
-Implementações:
+| Campo | Tipo | Regra |
+|---|---|---|
+| `instanceId` | `String` | chave efêmera recebida; dedupe apenas em memória |
+| `lastSeenAt` | `DateTime` | atualizado a cada anúncio compatível |
+| `rssi` | `int?` | opcional para debug; não persistir/logar como dado pessoal |
 
-- `PluginBluetoothStateProvider`: usa `bluetooth_manager 2.0.1` somente em Android; nunca chama `enableBluetooth()`/`disableBluetooth()`.
-- `UnsupportedBluetoothStateProvider`: usado em iOS/Web/Windows; retorna `unavailable` e stream vazia.
+Regras: TTL 15s; expirar/remove no tick; limpar em background/logout/dispose.
 
-## BluetoothProximityController
+## BluetoothAdapterPrecondition
 
-- `ChangeNotifier` com estado inicial `unavailable`.
-- Faz leitura inicial ao ser criado e assina o stream.
-- Converte qualquer erro em `unavailable`.
-- Mantém somente o último estado observado.
-- Cancela a subscrição no `dispose()`.
-- Não armazena em SharedPreferences, banco, arquivo, backend ou WebSocket.
+| Campo | Tipo | Regra |
+|---|---|---|
+| `isAndroid` | `bool` | fora Android => unavailable |
+| `hasPermission` | `bool` | scan/advertise/connect conforme plataforma |
+| `adapterReady` | `bool` | poweredOn/ready |
+| `isForegroundAuthenticated` | `bool` | requerido para advertise+scan |
 
-## Regras de transição
+## Transições
 
-- `on` → `nearby`.
-- `off` → `away`.
-- `uknow` → `unavailable`.
-- exceção/erro → `unavailable`.
-- mudança rápida: último evento recebido vence.
-- estados transitórios do adaptador são ignorados pelo plugin; se chegarem como desconhecidos, viram `unavailable`.
+- precondições OK + observação compatível recente => `nearby`.
+- precondições OK + sem observação recente => `away`.
+- permissão/BT/hardware/falha/plataforma inválida/background => `unavailable`.
+- receber anúncio compatível: upsert `instanceId`, `lastSeenAt=now`.
+- após 15s sem anúncio compatível: remover observação; recalcular.
 
 ## Persistência
 
-Nenhuma. Nenhuma tabela, coluna, DTO REST ou payload WebSocket é alterado.
+Nenhuma. Sem DB, SharedPreferences, arquivo, backend, WebSocket, analytics ou logs de identificadores pessoais.

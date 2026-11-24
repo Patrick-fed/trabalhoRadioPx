@@ -1,51 +1,50 @@
-# Quickstart: Simulação de Proximidade via Bluetooth
+# Quickstart: Presença RadioPX via Bluetooth (BLE)
 
-## Execução
+## Pré-condições
+
+- 2 dispositivos Android físicos com RadioPX instalado.
+- Usuário autenticado em ambos, app em foreground.
+- Bluetooth ligado e permissões concedidas (`BLUETOOTH_SCAN`, `BLUETOOTH_CONNECT`, `BLUETOOTH_ADVERTISE` no Android 12+).
+- Android 11-: best-effort; localização do sistema pode ser necessária para scan, conforme comportamento do OS.
+
+## Spike (antes de produção)
+
+```bash
+cd C:\Users\User\AppData\Local\Temp\opencode\radiopx_ble_spike
+flutter analyze lib/main.dart
+flutter build apk --debug
+```
+
+Validar com 2 aparelhos: iniciar advertise+scan, confirmar detecção apenas com UUID RadioPX, expiração 15s, parar ao sair/background.
+
+## Implementação (após T005)
 
 ```bash
 cd frontend
 flutter pub get
-flutter run
-```
-
-## Verificação automatizada
-
-```bash
-cd frontend
 flutter analyze
 flutter test
-```
-
-## Verificação do manifesto mesclado
-
-```bash
-cd frontend
 flutter build apk --debug
 ```
 
-Conferir o manifesto mesclado gerado em `frontend/build/app/intermediates/merged_manifests/debug/AndroidManifest.xml`:
+## Manifesto mesclado
 
-- presente: `android.permission.BLUETOOTH` com `android:maxSdkVersion="30"`;
-- ausentes: `BLUETOOTH_ADMIN`, `BLUETOOTH_SCAN`, `BLUETOOTH_ADVERTISE`, `BLUETOOTH_CONNECT`;
-- presentes: permissões pré-existentes de INTERNET, RECORD_AUDIO, ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION e MODIFY_AUDIO_SETTINGS.
+Conferir `frontend/build/app/intermediates/merged_manifest/debug/processDebugMainManifest/AndroidManifest.xml`:
+- presente: `BLUETOOTH_SCAN` com `neverForLocation`, `BLUETOOTH_CONNECT`, `BLUETOOTH_ADVERTISE`.
+- presentes legadas maxSdk30 quando aplicável.
+- `bluetooth`/`bluetooth_le` `required=false`.
+- sem permissões desnecessárias.
 
-> Status da entrega (22/11/2026): `flutter pub get` resolveu `bluetooth_manager
-> 2.0.1`; `flutter analyze` terminou sem erros (13 infos pré-existentes fora da
-> feature); `flutter test` passou com 66 testes; `flutter build apk --debug`
-> gerou `build/app/outputs/flutter-apk/app-debug.apk`. O manifesto mesclado foi
-> inspecionado e contém `BLUETOOTH` com `maxSdkVersion="30"`, sem
-> `BLUETOOTH_ADMIN`, `BLUETOOTH_SCAN`, `BLUETOOTH_ADVERTISE` ou
-> `BLUETOOTH_CONNECT`. Falta apenas a validação manual em dispositivo Android.
+## Validação manual
 
-## Validação manual em Android
+1. A+B autenticados foreground, BT on, permissão ok: ambos "Alguém por perto".
+2. BLE genérico próximo: permanece "Ninguém por perto".
+3. Afastar/desligar B: A volta para "Ninguém por perto" após 15s.
+4. Background/saída autenticada: advertise+scan param; observações limpas.
+5. BT off/permissão negada: "Indisponível", app utilizável.
+6. Navegar Canais/Falar/Perfil: indicador consistente.
+7. Confirmar sem GATT/pairing/áudio/persistência/backend e sem regressão de canais/PTT/WebSocket/localização.
 
-1. Abrir o app autenticado com Bluetooth ligado: indicador mostra "Alguém por perto".
-2. Desligar o Bluetooth nas configurações do sistema com o app aberto: indicador muda para "Ninguém por perto" em até 3 segundos.
-3. Ligar novamente: indicador volta para "Alguém por perto" em até 3 segundos.
-4. Forçar erro/estado desconhecido com provider de teste: indicador mostra "Indisponível".
-5. Alternar entre Canais, Falar e Perfil: indicador permanece visível e consistente.
-6. Confirmar que nenhum diálogo de permissão Nearby Devices aparece e que canais, WebSocket e PTT continuam inalterados.
+## Evidência
 
-## Fora de escopo
-
-iOS, Web e Windows: a factory retorna provider indisponível e nenhuma chamada nativa é feita.
+Registrar data, aparelhos, Android versions, resultado, logs/análise/build e limitações Android 11-.

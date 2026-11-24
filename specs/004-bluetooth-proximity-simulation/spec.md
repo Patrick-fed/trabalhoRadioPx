@@ -1,117 +1,127 @@
-# Feature Specification: Simulação de Proximidade via Bluetooth
+# Feature Specification: Detecção de Presença RadioPX via Bluetooth (BLE)
 
-**Feature Branch**: `feature/migracao-painel-adm-para-vue` (alias SpecKit para validação: `004-bluetooth-proximity-simulation`)
-**Created**: 21/11/2026
-**Status**: Draft
-**Input**: User description: "Indicador visual de proximidade simulado pelo estado do adaptador Bluetooth do próprio aparelho, para demonstração da presença ou ausência de alguém próximo, sem descoberta de dispositivos, identificação, distância, conexão, comunicação, notificação ou ações automáticas."
+**Feature Branch**: `bluetooth` (alias SpecKit: `004-bluetooth-proximity-simulation`)
+**Created**: 21/11/2026 | **Revised**: 24/11/2026
+**Status**: Draft — escopo revisado para advertise+scan RadioPX↔RadioPX; spike de dependência pendente de validação em hardware
+**Input**: Detectar presença de outros aparelhos com RadioPX aberto via BLE. Decisões aprovadas: Service UUID fixo do protocolo RadioPX + identificador efêmero aleatório em memória (sem associação com usuário/conta/dispositivo); spike Android antes da lib definitiva; Android 11- best-effort; RadioPX "aberto" = autenticado e primeiro plano; ao background/sair da área autenticada/encerrar tela responsável, parar advertise+scan e limpar observações em memória.
 
 ## User Scenarios & Testing *(mandatory)*
 
-### User Story 1 - Indicador reflete o estado inicial (Priority: P1)
+### User Story 1 - Detectar outro RadioPX próximo (Priority: P1)
 
-Como apresentador do RadioPX, quero abrir o aplicativo e ver imediatamente um indicador de proximidade simulada, para demonstrar presença ou ausência de alguém próximo sem precisar realizar nenhuma ação adicional.
+Como usuário autenticado do RadioPX, quero ver "Alguém por perto" quando outro aparelho com RadioPX aberto estiver próximo, para saber que há presença compatível sem identificar pessoas.
 
-**Why this priority**: É o comportamento essencial da demonstração: o indicador precisa ser correto já na abertura do app.
+**Why this priority**: É o valor central da revisão: presença só conta entre instâncias RadioPX.
 
-**Independent Test**: Pode ser testado abrindo o app autenticado com o Bluetooth ligado, desligado e indisponível/desconhecido, verificando o texto exibido em cada caso.
+**Independent Test**: Dois Androids com RadioPX autenticado em foreground, BT ligado e permissão concedida; um periférico BLE genérico próximo não deve alterar o indicador.
 
 **Acceptance Scenarios**:
 
-1. **Given** o dispositivo Android está com Bluetooth ligado, **When** o usuário autenticado abre o aplicativo, **Then** o indicador exibe "Alguém por perto".
-2. **Given** o dispositivo Android está com Bluetooth desligado, **When** o usuário autenticado abre o aplicativo, **Then** o indicador exibe "Ninguém por perto".
-3. **Given** o estado do Bluetooth não pode ser determinado, é indisponível ou a consulta falha, **When** o usuário autenticado abre o aplicativo, **Then** o indicador exibe "Indisponível" sem bloquear o uso do aplicativo.
+1. **Given** dois aparelhos estão autenticados, em foreground, com Bluetooth ligado e permissão concedida, **When** ambos anunciam e escaneiam o Service UUID RadioPX, **Then** cada um exibe "Alguém por perto".
+2. **Given** o app está autenticado em foreground com scan ativo e nenhum outro RadioPX compatível é observado, **When** existe apenas BLE genérico por perto, **Then** o indicador exibe "Ninguém por perto".
+3. **Given** Bluetooth desligado, sem hardware/permissão, ou falha de consulta, **When** o usuário abre a área autenticada, **Then** o indicador exibe "Indisponível" sem bloquear o app.
 
 ---
 
-### User Story 2 - Atualização automática durante o uso (Priority: P1)
+### User Story 2 - Atualização automática e expiração (Priority: P1)
 
-Como apresentador, quero que o indicador mude automaticamente quando eu ligar ou desligar o Bluetooth nas configurações do aparelho, para simular a mudança de proximidade sem reiniciar o aplicativo.
+Como usuário, quero que o indicador mude automaticamente quando outro RadioPX compatível aparecer ou desaparecer, sem reiniciar o app.
 
-**Why this priority**: A apresentação depende da mudança visível em tempo real; reiniciar o app quebraria a demonstração.
+**Why this priority**: Demonstração depende de resposta temporal visível.
 
-**Independent Test**: Pode ser testado com o aplicativo aberto, alternando o Bluetooth externamente e observando a troca do indicador sem reinício.
+**Independent Test**: Aproximar/afastar o segundo aparelho RadioPX e observar atualização em até 3s e expiração em 15s.
 
 **Acceptance Scenarios**:
 
-1. **Given** o aplicativo está aberto e o indicador mostra "Ninguém por perto", **When** o Bluetooth é ligado nas configurações do aparelho, **Then** o indicador passa a exibir "Alguém por perto" sem reiniciar o aplicativo.
-2. **Given** o aplicativo está aberto e o indicador mostra "Alguém por perto", **When** o Bluetooth é desligado nas configurações do aparelho, **Then** o indicador passa a exibir "Ninguém por perto" sem reiniciar o aplicativo.
+1. **Given** o indicador mostra "Ninguém por perto", **When** um anúncio RadioPX compatível é recebido, **Then** muda para "Alguém por perto" em até 3 segundos.
+2. **Given** o indicador mostra "Alguém por perto", **When** nenhum anúncio RadioPX compatível é recebido por 15 segundos, **Then** muda para "Ninguém por perto".
+3. **Given** mudanças rápidas de presença, **When** múltiplos eventos chegam, **Then** o estado mais recente consistente vence, sem flicker perceptível.
 
 ---
 
-### User Story 3 - Indicador global na navegação principal (Priority: P2)
+### User Story 3 - Visibilidade global e lifecycle foreground-only (Priority: P2)
 
-Como usuário do aplicativo, quero ver o mesmo indicador em todas as abas principais, para que a simulação continue visível independentemente de onde eu esteja no app.
+Como usuário, quero ver o mesmo indicador em Canais, Falar e Perfil, e que a detecção só ocorra enquanto o RadioPX estiver aberto.
 
-**Why this priority**: Garante consistência visual durante a apresentação, sem exigir indicadores separados por tela.
+**Why this priority**: Consistência visual e privacidade operacional.
 
-**Independent Test**: Pode ser testado alternando entre Canais, Falar e Perfil com o aplicativo aberto e verificando que o indicador permanece visível e coerente.
+**Independent Test**: Navegar entre abas; enviar app para background/sair da área autenticada e verificar parada de advertise+scan e limpeza de observações.
 
 **Acceptance Scenarios**:
 
-1. **Given** o indicador está visível na área principal do aplicativo, **When** o usuário alterna entre as abas Canais, Falar e Perfil, **Then** o indicador permanece visível em todas elas com o mesmo estado.
+1. **Given** usuário autenticado na navegação principal, **When** alterna entre Canais, Falar e Perfil, **Then** o indicador permanece visível e coerente.
+2. **Given** advertise+scan ativos, **When** app vai para background, sai da área autenticada ou fecha a tela responsável, **Then** advertise e scan param e observações em memória são limpas.
+3. **Given** app retorna ao foreground autenticado com pré-condições válidas, **When** a tela responsável retoma, **Then** advertise+scan reiniciam e o indicador recalcula.
 
 ---
 
-### User Story 4 - Simulação isolada das comunicações existentes (Priority: P2)
+### User Story 4 - Isolamento, privacidade e compatibilidade (Priority: P2)
 
-Como usuário, quero que a simulação por Bluetooth não influencie canais, chamadas ou conexões, para que as funcionalidades atuais do RadioPX continuem funcionando normalmente.
+Como usuário, quero que a presença BLE não identifique pessoas, não persista dados e não afete canais/PTT/WebSocket/áudio/localização.
 
-**Why this priority**: A feature é apenas uma simulação visual; qualquer efeito colateral em comunicação comprometeria as demais funcionalidades.
+**Why this priority**: Evita regressão e risco de privacidade.
 
-**Independent Test**: Pode ser testado alternando o Bluetooth enquanto o app está conectado aos fluxos existentes e verificando que canais, WebSocket e PTT permanecem inalterados.
+**Independent Test**: Usar canais/PTT/WebSocket durante mudanças de presença; inspecionar que não há pairing/GATT/persistência/API.
 
 **Acceptance Scenarios**:
 
-1. **Given** o aplicativo está usando canais e comunicação por rede, **When** o estado do Bluetooth muda, **Then** nenhuma descoberta, conexão, transmissão, notificação ou ação automática é iniciada.
-2. **Given** o indicador muda de estado, **When** o usuário usa as funcionalidades existentes, **Then** a comunicação por Wi-Fi e WebSocket permanece inalterada.
+1. **Given** canais e comunicação por rede ativos, **When** presença BLE muda, **Then** nenhuma conexão GATT, pareamento, áudio, notificação, persistência ou chamada de backend é iniciada.
+2. **Given** permissão negada ou Bluetooth desligado, **When** fluxo inicia, **Then** indicador exibe "Indisponível" e funcionalidades existentes permanecem utilizáveis.
+3. **Given** observação RadioPX recebida, **When** processada, **Then** apenas identificador efêmero e timestamp em memória são usados; nenhum dado pessoal é exposto ou persistido.
 
 ---
 
 ### Edge Cases
 
-- Consulta ao estado do Bluetooth falha ou retorna valor desconhecido: o indicador deve exibir "Indisponível".
-- Dispositivo sem adaptador Bluetooth utilizável: o indicador deve exibir "Indisponível".
-- Permissão necessária não concedida: o indicador deve exibir "Indisponível", sem exibir mensagem bloqueante ou solicitar automaticamente que o usuário ligue o Bluetooth.
-- Mudanças rápidas de estado: o indicador deve refletir o estado observado mais recente.
-- Estados transitórios do adaptador: se não puderem ser mapeados para um dos três textos definidos, devem ser tratados como "Indisponível".
-- A funcionalidade não é aplicável a iOS, Web ou Windows.
+- Permissão negada/revogada: "Indisponível", sem bloquear app.
+- Bluetooth desligado, adaptador ausente, hardware BLE indisponível ou falha de plugin: "Indisponível".
+- Android 11 ou inferior: best-effort; limitações de sistema/localização podem impedir descoberta; documentar no quickstart.
+- BLE genérico, beacon, headset, carro etc.: ignorados se não anunciarem Service UUID RadioPX.
+- Anúncio RadioPX sem sessão autenticada/foreground: não deve ocorrer; se ocorrer por estado inválido, parar e limpar.
+- Mudanças rápidas: último estado consistente vence.
+- Identificadores efêmeros e observações: apenas memória, TTL 15s, limpos no dispose/background/logout.
+- Fora de escopo: iOS, Web, Windows.
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
-- **FR-001**: O aplicativo MUST exibir um indicador visual de proximidade simulada na área principal autenticada, compartilhada pelas abas Canais, Falar e Perfil.
-- **FR-002**: O indicador MUST exibir exatamente "Alguém por perto" quando o adaptador Bluetooth estiver ligado.
-- **FR-003**: O indicador MUST exibir exatamente "Ninguém por perto" quando o adaptador Bluetooth estiver desligado.
-- **FR-004**: O indicador MUST exibir exatamente "Indisponível" quando o Bluetooth estiver indisponível, o estado for desconhecido ou a consulta falhar.
-- **FR-005**: Ao abrir o aplicativo, o sistema MUST consultar o estado atual do Bluetooth e exibir o indicador correspondente.
-- **FR-006**: Enquanto o aplicativo estiver aberto, o sistema MUST acompanhar mudanças no estado do Bluetooth e atualizar o indicador sem exigir reinício.
-- **FR-007**: O sistema MUST NOT solicitar automaticamente que o usuário ligue o Bluetooth nem tentar ligá-lo por conta própria.
-- **FR-008**: O estado do Bluetooth MUST ser usado somente para atualizar o indicador visual.
-- **FR-009**: A funcionalidade MUST NOT realizar descoberta de dispositivos, identificação de usuários ou aparelhos, medição de distância, pareamento, conexão Bluetooth/BLE, comunicação entre dispositivos, transmissão de áudio, notificações ou ações automáticas.
-- **FR-010**: A funcionalidade MUST NOT alterar a comunicação existente por Wi-Fi e WebSocket.
-- **FR-011**: A funcionalidade MUST ser limitada ao Android; suporte para iOS, Web ou Windows está fora de escopo.
+- **FR-001**: O app MUST exibir indicador visual de proximidade na área principal autenticada, compartilhada por Canais, Falar e Perfil.
+- **FR-002**: O indicador MUST exibir "Alguém por perto" somente quando ao menos uma observação RadioPX compatível for recebida nos últimos 15 segundos.
+- **FR-003**: O indicador MUST exibir "Ninguém por perto" quando advertise+scan estiverem ativos e não houver observações RadioPX compatíveis recentes.
+- **FR-004**: O indicador MUST exibir "Indisponível" quando Bluetooth/permissão/hardware/estado estiver indisponível ou consulta falhar.
+- **FR-005**: Na área autenticada em foreground, o sistema MUST consultar pré-condições, solicitar permissão necessária uma vez e iniciar advertise+scan BLE.
+- **FR-006**: O sistema MUST atualizar o indicador em até 3 segundos após mudança observada, sem reinício.
+- **FR-007**: O sistema MUST NOT solicitar ativação automática do Bluetooth.
+- **FR-008**: O estado do adaptador MUST ser apenas pré-condição; nunca sinal direto de presença.
+- **FR-009**: O app MUST anunciar e filtrar pelo Service UUID fixo do protocolo RadioPX; BLE genérico MUST ser ignorado.
+- **FR-010**: O anúncio MUST usar identificador efêmero aleatório em memória, sem associação com usuário, conta, dispositivo estável, MAC, nome pessoal ou localização.
+- **FR-011**: O sistema MUST NOT fazer pareamento, conexão GATT, troca de áudio, identificação pessoal, persistência, backend ou notificação.
+- **FR-012**: Ao background, saída da área autenticada, dispose da tela responsável ou fim de sessão, o sistema MUST parar advertise+scan e limpar observações em memória.
+- **FR-013**: A funcionalidade MUST NOT alterar canais, PTT, WebSocket, áudio ou permissões/localização existentes.
+- **FR-014**: A funcionalidade MUST ser limitada ao Android; Android 11- é best-effort com limitações documentadas.
 
 ### Key Entities *(include if feature involves data)*
 
-- **Indicador de Proximidade Simulada**: elemento visual com três estados observáveis — presença simulada, ausência simulada e indisponível — associados aos textos "Alguém por perto", "Ninguém por perto" e "Indisponível".
-- **Estado do adaptador Bluetooth**: entrada externa e temporária, usada apenas para determinar qual dos três estados do indicador deve ser exibido; não é persistida nem enviada ao backend.
+- **RadioPxPresenceState**: `nearby`, `away`, `unavailable` mapeados para os textos exatos da UI.
+- **RadioPxAdvertisement**: anúncio BLE local com Service UUID fixo RadioPX e identificador efêmero aleatório em memória.
+- **NearbyRadioPxObservation**: observação remota compatível com `instanceId` efêmero e `lastSeenAt`; TTL 15s; apenas memória.
+- **BluetoothAdapterPrecondition**: estado/permissão/hardware; habilita ou bloqueia advertise+scan.
 
 ## Success Criteria *(mandatory)*
 
 ### Measurable Outcomes
 
-- **SC-001**: 100% dos sete cenários de aceitação listados são verificados com sucesso em um dispositivo Android.
-- **SC-002**: Após o usuário ligar ou desligar o Bluetooth com o aplicativo aberto, o indicador atualiza em até 3 segundos, sem reinício.
-- **SC-003**: Em 100% das verificações de navegação, o indicador permanece visível e consistente nas abas Canais, Falar e Perfil.
-- **SC-004**: Nenhuma funcionalidade existente de canais, PTT ou WebSocket apresenta regressão quando o estado do Bluetooth é alterado.
-- **SC-005**: Nenhuma ação automática de Bluetooth, notificação, conexão, descoberta ou transmissão é iniciada pela mudança do indicador.
-- **SC-006**: Em 100% dos cenários de falha ou estado desconhecido, o aplicativo exibe "Indisponível" e continua utilizável.
+- **SC-001**: 100% dos cenários de aceitação passam em dois Androids físicos com RadioPX autenticado em foreground.
+- **SC-002**: Presença compatível atualiza em até 3s; ausência expira em 15s sem novos anúncios.
+- **SC-003**: BLE genérico não altera o indicador em 100% dos testes de filtro.
+- **SC-004**: Em 100% dos ciclos background/saída autenticada/dispose, advertise+scan param e memória de observações é limpa.
+- **SC-005**: Nenhum pareamento, GATT, áudio, persistência, backend, ou regressão em canais/PTT/WebSocket/localização.
+- **SC-006**: Permissão negada/BT off/hardware indisponível resultam em "Indisponível" sem bloquear o app.
 
 ## Assumptions
 
-- A funcionalidade existe para fins de demonstração acadêmica: ligar/desligar o Bluetooth representa presença/ausência simulada, não uma medição real de proximidade.
-- O público-alvo desta versão é o aplicativo Android autenticado; o indicador aparece na área principal após o login.
-- A biblioteca `bluetooth_manager 2.0.1` foi pré-selecionada e teve compatibilidade com o ambiente local verificada; a definição das permissões mínimas fica para a etapa de planejamento.
-- Nenhuma informação de estado do Bluetooth é persistida, enviada ao backend ou usada para identificar usuários.
-- Permissões de descoberta e anúncio de dispositivos são evitadas por estarem fora do escopo.
+- A finalidade é demonstração acadêmica de proximidade entre instâncias RadioPX, não rastreamento, distância precisa ou identificação.
+- "Aparelho próximo" conta apenas quando anuncia o Service UUID RadioPX; dispositivos sem anúncio compatível não contam.
+- A dependência BLE definitiva será escolhida após spike com evidência em dois Androids físicos e auditoria de licença/manutenção/transitivas.
+- Nenhum identificador efêmero é persistido, enviado ao backend, logado como dado pessoal ou associado a usuário/conta/dispositivo.
