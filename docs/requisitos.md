@@ -184,6 +184,25 @@ acima permanecem inalterados. Ver DEC-017, DEC-018 e DEC-022.
 
 ---
 
+### RF10 - Simulação de Proximidade via Bluetooth
+
+O aplicativo deve exibir um indicador visual de proximidade simulada baseado
+exclusivamente no estado do adaptador Bluetooth do próprio dispositivo Android.
+
+**Critérios de Aceitação:**
+- Bluetooth ligado: exibir "Alguém por perto"
+- Bluetooth desligado: exibir "Ninguém por perto"
+- Bluetooth indisponível, estado desconhecido ou falha na consulta: exibir "Indisponível"
+- Consultar o estado atual ao abrir o aplicativo autenticado
+- Atualizar o indicador automaticamente quando o estado do Bluetooth mudar com o aplicativo aberto, sem reinício
+- Manter o indicador visível na área principal compartilhada pelas abas Canais, Falar e Perfil
+- Não solicitar ao usuário que ligue o Bluetooth nem tentar ligá-lo automaticamente
+- Não descobrir dispositivos, identificar usuários/aparelhos, medir distância, parear, conectar via Bluetooth/BLE, comunicar-se entre dispositivos, transmitir áudio, notificar ou iniciar ações automáticas
+- Não alterar a comunicação existente por Wi-Fi e WebSocket
+- Aplicar somente ao Android; iOS, Web e Windows ficam fora de escopo
+
+---
+
 ## Requisitos Não Funcionais
 
 ### RNF01 - Privacidade
@@ -273,6 +292,22 @@ acima permanecem inalterados. Ver DEC-017, DEC-018 e DEC-022.
 
 ---
 
+### RNF07 - Minimização de Permissões e Isolamento da Simulação Bluetooth
+
+- A simulação deve utilizar o menor conjunto de permissões Android necessário apenas para consultar o estado do adaptador Bluetooth
+- Permissões de descoberta de dispositivos e anúncio/devisibilidade devem ser evitadas
+- Qualquer permissão adotada deve ter justificativa técnica registrada na etapa de planejamento
+- O estado do Bluetooth não deve ser persistido nem enviado ao backend
+- Falhas na consulta do estado do Bluetooth devem degradar apenas o indicador, sem bloquear funcionalidades existentes
+
+**Critérios de Verificação:**
+- Revisão das permissões declaradas no manifesto Android
+- Verificação de que nenhuma permissão de descoberta/anúncio é necessária para o escopo
+- Teste de consulta com estado desconhecido/falha sem afetar canais, PTT ou WebSocket
+- Auditoria de que nenhum dado de estado Bluetooth é enviado à API
+
+---
+
 ## Rastreabilidade
 
 ### RF01 → Backend → Database → Frontend → Testes
@@ -340,3 +375,12 @@ acima permanecem inalterados. Ver DEC-017, DEC-018 e DEC-022.
 - **Testes**: `admin-ui/tests/**` (39 testes Vue), `internal/admin/handler_test.go`
   (11 casos), `user/service_test.go` (suspend/promote/bootstrap/location), E2E
   manual + `test-backend.ps1` (regressão)
+
+### RF10 → Backend → Database → Frontend → Testes
+
+- **Backend**: N/A (simulação local)
+- **Database**: N/A (sem persistência)
+- **Frontend**: aplicativo Flutter, área principal autenticada compartilhada pelas três abas
+- **Testes**: `frontend/test/bluetooth_proximity_controller_test.dart`,
+  `frontend/test/bluetooth_proximity_indicator_test.dart` e validação manual em
+  dispositivo Android

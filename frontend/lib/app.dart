@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'features/auth/screens/login_screen.dart';
 import 'features/auth/screens/register_screen.dart';
 import 'features/channels/screens/channels_screen.dart';
@@ -6,6 +7,10 @@ import 'features/voice/screens/voice_screen.dart';
 import 'features/profile/screens/profile_screen.dart';
 import 'features/auth/services/auth_service.dart';
 import 'core/location_reporter.dart';
+import 'features/bluetooth/services/bluetooth_state_provider.dart';
+import 'features/bluetooth/services/bluetooth_state_provider_factory.dart';
+import 'features/bluetooth/services/bluetooth_proximity_controller.dart';
+import 'features/bluetooth/widgets/bluetooth_proximity_indicator.dart';
 
 class RadioPXApp extends StatelessWidget {
   const RadioPXApp({super.key});
@@ -68,9 +73,7 @@ class _AuthGateState extends State<AuthGate> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     if (!_isLoggedIn) {
       return const LoginScreen();
@@ -80,7 +83,9 @@ class _AuthGateState extends State<AuthGate> {
 }
 
 class MainScreen extends StatefulWidget {
-  const MainScreen({super.key});
+  const MainScreen({super.key, this.bluetoothStateProvider});
+
+  final BluetoothStateProvider? bluetoothStateProvider;
 
   @override
   State<MainScreen> createState() => _MainScreenState();
@@ -90,18 +95,23 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   int _currentIndex = 0;
   String? _selectedChannelId;
   String? _selectedChannelName;
+  late final BluetoothProximityController _bluetoothController;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     LocationReporter.instance.start();
+    _bluetoothController = BluetoothProximityController(
+      widget.bluetoothStateProvider ?? createBluetoothStateProvider(),
+    );
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     LocationReporter.instance.stop();
+    _bluetoothController.dispose();
     super.dispose();
   }
 
@@ -135,7 +145,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final List<Widget> _screens = [
+    final List<Widget> screens = [
       ChannelsScreen(onChannelSelected: _onChannelSelected),
       _selectedChannelId != null
           ? VoiceScreen(
@@ -148,7 +158,21 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     ];
 
     return Scaffold(
-      body: _screens[_currentIndex],
+      body: Column(
+        children: [
+          SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: BluetoothProximityIndicator(
+                key: BluetoothProximityIndicator.indicatorKey,
+                controller: _bluetoothController,
+              ),
+            ),
+          ),
+          Expanded(child: screens[_currentIndex]),
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: (index) {

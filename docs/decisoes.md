@@ -686,3 +686,50 @@ DEC-017 apenas no item "sem projeto separado, sem nova dependência".
 - Nenhum endpoint, campo, status code ou mensagem da API é alterado.
 - Testes de regressão: Vitest na SPA, `go test ./...` e
   `scripts/test-backend.ps1` no backend.
+
+---
+
+## DEC-023 — Simulação Bluetooth com plugin pinado e permissões mínimas (RF10/RNF07)
+
+**Data**: 22/11/2026
+
+**Decisão**: o indicador de proximidade usa `bluetooth_manager 2.0.1` no Android,
+através de `BluetoothStateProvider` injetável e `BluetoothProximityController` em
+memória. O app consulta `getBluetoothState()` e assina `getBluetoothStateStream()`
+apenas; não chama `enableBluetooth`, `disableBluetooth`, scan, advertise,
+discovery, pareamento, conexão BLE, notificação ou qualquer I/O de rede. O provedor é
+selecionado por import condicional: Android usa o plugin; iOS, Web, Windows,
+macOS e Linux retornam `Indisponível` sem carregar o plugin.
+
+**Motivo**:
+- RF10 pede simulação somente com o estado do adaptador do próprio dispositivo,
+  sem consumo de dados nem interação entre dispositivos.
+- Auditoria do commit `9ad0adfe366cb3c907a49d2ca5c1d688158ba6ee` (2.0.1,
+  publicado em 29/05/2026) confirmou que a API Dart não usa
+  `permission_handler`, apesar da dependência transitiva do pacote.
+- `getDefaultAdapter()`, `isEnabled()` e `getState()` não exigem
+  `BLUETOOTH_CONNECT`; a documentação Android e o AOSP 14 marcam essas leituras
+  com `@RequiresLegacyBluetoothPermission`/`@RequiresNoPermission`.
+- `ACTION_STATE_CHANGED` é um broadcast protegido no AOSP 14, enquadrando-se na
+  exceção do Android 14 para receivers registrados em runtime.
+- Pinar a versão evita que uma atualização do plugin reintroduza permissões ou
+  APIs fora do escopo sem nova auditoria.
+
+**Alternativas Consideradas**:
+- Persistir/enviar o estado ao backend: viola RNF07 e não agrega à simulação.
+- Usar `BLUETOOTH_CONNECT`, `BLUETOOTH_SCAN` ou `BLUETOOTH_ADMIN`: sem consumo
+  real na feature; contraria RNF07.
+- Solicitar ativação do Bluetooth ao usuário: proibido por RF10.
+- Observar Bluetooth em todas as plataformas: fora do escopo e exigiria mais
+  permissões específicas por sistema.
+
+**Impacto**:
+- `frontend/pubspec.yaml` ganha `bluetooth_manager: 2.0.1`; nenhuma dependência
+  de runtime adicional é adotada diretamente.
+- `frontend/android/app/src/main/AndroidManifest.xml` declara `BLUETOOTH` com
+  `maxSdkVersion="30"` e remove via merge `BLUETOOTH_ADMIN`, `BLUETOOTH_SCAN`,
+  `BLUETOOTH_ADVERTISE` e `BLUETOOTH_CONNECT`. Permissões de localização
+  permanecem por RF04.
+- Backend, PostgreSQL, WebSocket e áudio permanecem intocados.
+- O estado do adaptador vive somente em memória; falhas de leitura/stream
+  degradam apenas o indicador para `Indisponível`.

@@ -3,7 +3,9 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  flutter_sound
   geolocator_windows
+  permission_handler_windows
   record_windows
 )
 

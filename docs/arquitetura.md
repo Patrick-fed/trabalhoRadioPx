@@ -299,6 +299,15 @@ lib/
 - **Responsabilidade**: Configuração do servidor (RNF06)
 - **Widgets**: Server URL sheet (Testar/Salvar)
 
+#### Bluetooth Feature
+- **Responsabilidade**: simulação local de proximidade (RF10/RNF07)
+- **Modelos**: `BluetoothProximityState` (`nearby`, `away`, `unavailable`)
+- **Services**: `BluetoothStateProvider`, factory condicional Android/stub,
+  `PluginBluetoothStateProvider` e `BluetoothProximityController`
+- **Widgets**: `BluetoothProximityIndicator` na área autenticada compartilhada
+- **Integração**: nenhuma chamada de API, WebSocket, banco ou áudio; estado apenas
+  em memória
+
 ## Admin Web (Vue 3)
 
 O painel administrativo mantido em `/admin` é uma SPA Vue 3 com Vite,
